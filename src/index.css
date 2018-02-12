@@ -1,0 +1,53 @@
+/* player controls */
+.player-controls {
+    display: inline-block;
+    margin: 0;
+}
+
+.player-controls .control-btn {
+    display: inline-block;
+    padding: 0;
+    list-style: none;
+    width: 36px;
+    line-height: 36px;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.player-controls .control-btn:hover {
+    cursor: pointer;
+    background-color: #eee;
+}
+
+.player-controls .control-btn:active {
+    background-color: #ddd;
+}
+
+/* player progress */
+.player-progress {
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 0;
+    height: 9px;
+    border-radius: 0;
+}
+
+.player-progress:hover {
+    cursor: pointer;
+}
+
+.player-progress .progress-bar {
+    -webkit-transition: width 300ms ease;
+    -o-transition: width 300ms ease;
+    transition: width 300ms ease;
+}
+
+/* play duration */
+.player-duration {
+    display: inline-block;
+    width: 100%;
+    font-family: monospace;
+    letter-spacing: 1px;
+    font-size: 14px;
+    color: #A1A1A1;
+}
