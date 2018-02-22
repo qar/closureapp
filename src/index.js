@@ -7,10 +7,6 @@ const soundManager = window.soundManager;
 const fullPath = 'http://freshly-ground.com/data/audio/sm2/Figub%20Brazlevi%C4%8D%20-%20Bosnian%20Syndicate.mp3';
 
 class PlayControl extends React.Component {
-  constructor(props) {
-    super(props);
-  }
-
   renderPlayBtn(isPlaying) {
     if (isPlaying) {
       // render paused icon
@@ -43,11 +39,39 @@ class PlayControl extends React.Component {
   }
 }
 
-class PlayProgressBar extends React.Component {
+class PlayQueue extends React.Component {
   constructor(props) {
     super(props);
+
+    this.playList = [
+      {
+        path: 'http://freshly-ground.com/data/audio/sm2/Figub%20Brazlevi%C4%8D%20-%20Bosnian%20Syndicate.mp3',
+        name: 'Bosnian Syndicate'
+      },
+
+      {
+        path: 'http://wavy.audio/wp-content/uploads/2018/01/LANDR-Rollie.wav',
+        name: 'vocalfry'
+      }
+    ];
   }
 
+  renderListItem(obj, i) {
+    return (
+      <li className="list-group-item" onClick={ () => this.props.play(obj.path) } key={ i }>{obj.name}</li>
+    );
+  }
+
+  render() {
+    return (
+      <ul className="list-group">
+        { this.playList.map((obj, i) => this.renderListItem(obj, i)) }
+      </ul>
+    );
+  }
+}
+
+class PlayProgressBar extends React.Component {
   render() {
     return (
       <div className="progress player-progress" id="ctrl-progress-wrapper">
@@ -85,87 +109,16 @@ class CorePlayer extends React.Component {
       isPlaying: false,
     };
 
+    this.currentSong = null;
+
     this.playerSetup();
   }
 
   playerSetup() {
-    const globalState = this.state;
-    const _this = this;
-
     soundManager.setup({
       url: '/node_modules/soundmanager2/swf/soundmanager2.swf',
       useHighPerformance: true,
       onready: function() {
-        this.mySound = soundManager.createSound({
-          id: 'aSound',
-          url: fullPath,
-
-          onplay: function() {
-            _this.setState({ isPlaying: true });
-          },
-
-          onresume: function() {
-            _this.setState({ isPlaying: true });
-          },
-
-          onpause: function() {
-            _this.setState({ isPlaying: false });
-          },
-
-          whileplaying: function() {
-            var progressMaxLeft = 100,
-                left,
-                width,
-                passMinutes,
-                passSeconds,
-                totalMinutes,
-                totalSeconds;
-
-            passMinutes = Math.floor(this.position / 1000 / 60);
-            passSeconds = Math.ceil(this.position / 1000 - passMinutes * 60);
-            var passTime = (passMinutes >= 10 ? passMinutes.toString() : '0' + passMinutes) +
-                            ':' +
-                            (passSeconds >= 10 ? passSeconds.toString() : '0' + passSeconds);
-
-            globalState.passTime = passTime;
-            _this.setState({ passTime });
-
-            if (!globalState.totalTime) {
-              totalMinutes = Math.floor(this.durationEstimate / 1000 / 60);
-              totalSeconds = Math.ceil(this.duration / 1000 - totalMinutes * 60);
-              var totalTime = (totalMinutes >= 10 ? totalMinutes.toString() : '0' + totalMinutes) +
-                              ':' +
-                              (totalSeconds >= 10 ? totalSeconds.toString() : '0' + totalSeconds);
-              _this.setState({ totalTime });
-            }
-
-            // _this.durationEstimate = this.durationEstimate;
-            globalState.durationEstimate = this.durationEstimate;
-            _this.setState({ durationEstimate: this.durationEstimate });
-
-            left = Math.min(progressMaxLeft, Math.max(0, (progressMaxLeft * (this.position / this.durationEstimate)))) + '%';
-            width = Math.min(100, Math.max(0, (100 * this.position / this.durationEstimate))) + '%';
-
-            if (this.duration) {
-              _this.setState({ width });
-            }
-          },
-
-          onstop: function() {
-            _this.setState({
-              passTime: 0,
-              width: '0%',
-              isPlaying: false
-            });
-          },
-
-          onfinish: function() {
-            _this.setState({
-              width: '0%',
-              isPlaying: false
-            });
-          }
-        });
       },
 
       ontimeout: function() {
@@ -174,17 +127,100 @@ class CorePlayer extends React.Component {
     });
   }
 
+  prepareSong(path) {
+    const globalState = this.state;
+    const _this = this;
+
+    this.currentSong = soundManager.createSound({
+      url: fullPath,
+
+      onplay: function() {
+        _this.setState({ isPlaying: true });
+      },
+
+      onresume: function() {
+        _this.setState({ isPlaying: true });
+      },
+
+      onpause: function() {
+        _this.setState({ isPlaying: false });
+      },
+
+      whileplaying: function() {
+        var width,
+            passMinutes,
+            passSeconds,
+            totalMinutes,
+            totalSeconds;
+
+        passMinutes = Math.floor(this.position / 1000 / 60);
+        passSeconds = Math.ceil(this.position / 1000 - passMinutes * 60);
+        var passTime = (passMinutes >= 10 ? passMinutes.toString() : '0' + passMinutes) +
+                        ':' +
+                        (passSeconds >= 10 ? passSeconds.toString() : '0' + passSeconds);
+
+        globalState.passTime = passTime;
+        _this.setState({ passTime });
+
+        if (!globalState.totalTime) {
+          totalMinutes = Math.floor(this.durationEstimate / 1000 / 60);
+          totalSeconds = Math.ceil(this.duration / 1000 - totalMinutes * 60);
+          var totalTime = (totalMinutes >= 10 ? totalMinutes.toString() : '0' + totalMinutes) +
+                          ':' +
+                          (totalSeconds >= 10 ? totalSeconds.toString() : '0' + totalSeconds);
+          _this.setState({ totalTime });
+        }
+
+        // _this.durationEstimate = this.durationEstimate;
+        globalState.durationEstimate = this.durationEstimate;
+        _this.setState({ durationEstimate: this.durationEstimate });
+
+        width = Math.min(100, Math.max(0, (100 * this.position / this.durationEstimate))) + '%';
+
+        if (this.duration) {
+          _this.setState({ width });
+        }
+      },
+
+      onstop: function() {
+        _this.setState({
+          passTime: 0,
+          width: '0%',
+          isPlaying: false
+        });
+      },
+
+      onfinish: function() {
+        _this.setState({
+          width: '0%',
+          isPlaying: false
+        });
+      }
+    });
+  }
+
   play() {
+    if (!this.currentSong) return;
+
     if (!this.state.isPlaying && this.state.passTime) {
       // is paused
-      soundManager.resume('aSound');
+      this.currentSong.resume();
     } else {
-      soundManager.play('aSound');
+      this.currentSong.play();
     }
   }
 
+  // switch song
+  playItem(path) {
+    this.stop();
+
+    this.prepareSong(path);
+
+    this.play();
+  }
+
   pause() {
-    soundManager.pause('aSound');
+    this.currentSong.pause();
   }
 
   prev() {
@@ -196,8 +232,9 @@ class CorePlayer extends React.Component {
   }
 
   stop() {
-    /* TODO */
-    soundManager.stop('aSound');
+    if (!this.currentSong) return;
+
+    this.currentSong.stop();
   }
 
   render() {
@@ -217,6 +254,10 @@ class CorePlayer extends React.Component {
         </div>
         <div className="col-md-2">
           <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
+        </div>
+
+        <div className="col-md-12">
+          <PlayQueue play={ (path) => this.playItem(path) }/>
         </div>
       </div>
     );
