@@ -10,7 +10,8 @@
     "react-bootstrap": "^0.32.1",
     "react-dom": "^16.2.0",
     "react-scripts": "1.1.1",
-    "soundmanager2": "^2.97.20170602"
+    "soundmanager2": "^2.97.20170602",
+    "webpack": "4.1.0"
   },
   "scripts": {
     "electron": "electron .",
