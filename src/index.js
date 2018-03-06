@@ -2,9 +2,19 @@ import React from 'react';
 import './index.css';
 import ReactDOM from 'react-dom';
 import 'soundmanager2';
-const soundManager = window.soundManager;
+import path from 'path';
+import fs from 'fs';
+import { remote } from 'electron';
 
-const fullPath = 'http://freshly-ground.com/data/audio/sm2/Figub%20Brazlevi%C4%8D%20-%20Bosnian%20Syndicate.mp3';
+const MUSIC_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
+const musicList = fs.readdirSync(MUSIC_DIR).map(f => {
+  return {
+    name: f,
+    path: path.resolve(MUSIC_DIR, f)
+  };
+});
+
+const soundManager = window.soundManager;
 
 class PlayControl extends React.Component {
   renderPlayBtn(isPlaying) {
@@ -43,17 +53,7 @@ class PlayQueue extends React.Component {
   constructor(props) {
     super(props);
 
-    this.playList = [
-      {
-        path: 'http://freshly-ground.com/data/audio/sm2/Figub%20Brazlevi%C4%8D%20-%20Bosnian%20Syndicate.mp3',
-        name: 'Bosnian Syndicate'
-      },
-
-      {
-        path: 'http://wavy.audio/wp-content/uploads/2018/01/LANDR-Rollie.wav',
-        name: 'vocalfry'
-      }
-    ];
+    this.playList = musicList;
   }
 
   renderListItem(obj, i) {
@@ -132,7 +132,7 @@ class CorePlayer extends React.Component {
     const _this = this;
 
     this.currentSong = soundManager.createSound({
-      url: fullPath,
+      url: path,
 
       onplay: function() {
         _this.setState({ isPlaying: true });
