@@ -11,7 +11,7 @@ function createWindow () {
   win = new BrowserWindow({width: 1300, height: 800})
 
   // 然后加载应用的 index.html。
-  win.loadURL('http://localhost:3000/');
+  win.loadURL('file://' + __dirname + '/public/index.html');
 
   // 当 window 被关闭，这个事件会被触发。
   win.on('closed', () => {
