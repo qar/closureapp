@@ -2,8 +2,10 @@
   "name": "music-player",
   "version": "0.1.0",
   "private": true,
+  "main": "main.js",
   "dependencies": {
     "bootstrap": "3.3.6",
+    "electron": "^1.8.2",
     "react": "^16.2.0",
     "react-bootstrap": "^0.32.1",
     "react-dom": "^16.2.0",
@@ -11,6 +13,7 @@
     "soundmanager2": "^2.97.20170602"
   },
   "scripts": {
+    "electron": "electron .",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
