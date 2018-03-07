@@ -72,9 +72,21 @@ class PlayQueue extends React.Component {
 }
 
 class PlayProgressBar extends React.Component {
+  constructor(props) {
+    super(props);
+
+    this.progressBar = null;
+  }
+
+  setPos(ev) {
+    const offsetX = ev.nativeEvent.offsetX;
+    const maxWidth = this.progressBar.offsetWidth;
+    this.props.setPos(offsetX / maxWidth);
+  }
+
   render() {
     return (
-      <div className="progress player-progress" id="ctrl-progress-wrapper">
+      <div className="progress player-progress" ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
         <div className="progress-bar progress-bar-default"
              role="progressbar"
              aria-valuenow="40"
@@ -193,7 +205,8 @@ class CorePlayer extends React.Component {
       onfinish: function() {
         _this.setState({
           width: '0%',
-          isPlaying: false
+          isPlaying: false,
+          passTime: 0,
         });
       }
     });
@@ -237,6 +250,10 @@ class CorePlayer extends React.Component {
     this.currentSong.stop();
   }
 
+  setPos(rate) {
+    this.currentSong.setPosition(this.currentSong.durationEstimate * rate);
+  }
+
   render() {
     return (
       <div className="row">
@@ -250,7 +267,7 @@ class CorePlayer extends React.Component {
         </div>
 
         <div className="col-md-8">
-          <PlayProgressBar barProgress={this.state.width} />
+          <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
         </div>
         <div className="col-md-2">
           <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
