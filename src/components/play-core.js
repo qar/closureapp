@@ -210,7 +210,7 @@ class CorePlayer extends React.Component {
         </div>
 
         <div className="col-md-12">
-          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.queue }/>
+          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
         </div>
       </div>
     );

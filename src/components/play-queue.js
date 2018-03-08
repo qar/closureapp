@@ -9,7 +9,11 @@ class PlayQueue extends React.Component {
 
   renderListItem(obj, i) {
     return (
-      <li className="list-group-item" onClick={ () => this.props.play(obj.path) } key={ i }>{obj.name}</li>
+      <li className={ "list-group-item " + (obj.path === this.props.currentSound ? "active" : "") }
+          onClick={ () => this.props.play(obj.path) }
+          key={ i }>
+        {obj.name}
+      </li>
     );
   }
 
