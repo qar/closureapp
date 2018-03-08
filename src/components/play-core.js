@@ -3,6 +3,7 @@ import PlayControl from '../components/play-control';
 import PlayQueue from '../components/play-queue';
 import PlayProgressBar from '../components/play-progressbar';
 import PlayDuration from '../components/play-duration';
+import PlayModeControl from '../components/play-mode-control';
 
 class CorePlayer extends React.Component {
   constructor(props) {
@@ -14,11 +15,21 @@ class CorePlayer extends React.Component {
       passTime: 0,
       totalTime: 0,
       isPlaying: false,
+      isListRepeat: true,
     };
 
     this.currentSong = null;
 
     this.playerSetup();
+  }
+
+  _findNextSound(currentSoundPth) {
+    const idx = this.queue.findIndex(i => i.path === currentSoundPth);
+    if (idx + 1 === this.queue.length) {
+      return this.queue[0]; // return to the begining
+    } else {
+      return this.queue[idx + 1];
+    }
   }
 
   playerSetup() {
@@ -34,77 +45,96 @@ class CorePlayer extends React.Component {
     });
   }
 
-  prepareSong(path) {
-    const globalState = this.state;
+  _updatePlayProgress(position, durationEstimate, duration) {
+    var width,
+        passMinutes,
+        passSeconds,
+        totalMinutes,
+        totalSeconds;
+
+    passMinutes = Math.floor(position / 1000 / 60);
+    passSeconds = Math.ceil(position / 1000 - passMinutes * 60);
+    var passTime = (passMinutes >= 10 ? passMinutes.toString() : '0' + passMinutes) +
+                    ':' +
+                    (passSeconds >= 10 ? passSeconds.toString() : '0' + passSeconds);
+
+    this.state.passTime = passTime;
+    this.setState({ passTime });
+
+    if (!this.state.totalTime) {
+      totalMinutes = Math.floor(durationEstimate / 1000 / 60);
+      totalSeconds = Math.ceil(duration / 1000 - totalMinutes * 60);
+      var totalTime = (totalMinutes >= 10 ? totalMinutes.toString() : '0' + totalMinutes) +
+                      ':' +
+                      (totalSeconds >= 10 ? totalSeconds.toString() : '0' + totalSeconds);
+      this.setState({ totalTime });
+    }
+
+    this.state.durationEstimate = durationEstimate;
+    this.setState({ durationEstimate });
+
+    width = Math.min(100, Math.max(0, (100 * position / durationEstimate))) + '%';
+
+    if (duration) {
+      this.setState({ width });
+    }
+  }
+
+  _createSoundOpts() {
     const _this = this;
 
-    this.currentSong = soundManager.createSound({
-      url: path,
-
-      onplay: function() {
-        _this.setState({ isPlaying: true });
+    return {
+      onplay: () => {
+        this.setState({ isPlaying: true });
       },
 
-      onresume: function() {
-        _this.setState({ isPlaying: true });
+      onresume: () => {
+        this.setState({ isPlaying: true });
       },
 
-      onpause: function() {
-        _this.setState({ isPlaying: false });
+      onpause: () => {
+        this.setState({ isPlaying: false });
       },
 
       whileplaying: function() {
-        var width,
-            passMinutes,
-            passSeconds,
-            totalMinutes,
-            totalSeconds;
-
-        passMinutes = Math.floor(this.position / 1000 / 60);
-        passSeconds = Math.ceil(this.position / 1000 - passMinutes * 60);
-        var passTime = (passMinutes >= 10 ? passMinutes.toString() : '0' + passMinutes) +
-                        ':' +
-                        (passSeconds >= 10 ? passSeconds.toString() : '0' + passSeconds);
-
-        globalState.passTime = passTime;
-        _this.setState({ passTime });
-
-        if (!globalState.totalTime) {
-          totalMinutes = Math.floor(this.durationEstimate / 1000 / 60);
-          totalSeconds = Math.ceil(this.duration / 1000 - totalMinutes * 60);
-          var totalTime = (totalMinutes >= 10 ? totalMinutes.toString() : '0' + totalMinutes) +
-                          ':' +
-                          (totalSeconds >= 10 ? totalSeconds.toString() : '0' + totalSeconds);
-          _this.setState({ totalTime });
-        }
-
-        // _this.durationEstimate = this.durationEstimate;
-        globalState.durationEstimate = this.durationEstimate;
-        _this.setState({ durationEstimate: this.durationEstimate });
-
-        width = Math.min(100, Math.max(0, (100 * this.position / this.durationEstimate))) + '%';
-
-        if (this.duration) {
-          _this.setState({ width });
-        }
+        _this._updatePlayProgress(this.position, this.durationEstimate, this.duration);
       },
 
-      onstop: function() {
-        _this.setState({
+      onstop: () => {
+        this.setState({
           passTime: 0,
           width: '0%',
           isPlaying: false
         });
       },
+    };
+  }
 
-      onfinish: function() {
-        _this.setState({
+  prepareSong(path) {
+    const globalState = this.state;
+    const _this = this;
+
+    const nextSoundPath = this._findNextSound(path).path; 
+
+    const opts = Object.assign({}, this._createSoundOpts(),  {
+      url: path,
+      onfinish: () => {
+        this.setState({
           width: '0%',
           isPlaying: false,
           passTime: 0,
         });
+
+        if (!this.state.isListRepeat) {
+          this.currentSong.play();
+        } else {
+          this.prepareSong(nextSoundPath).play();
+        }
       }
     });
+
+    this.currentSong = soundManager.createSound(opts);
+    return this.currentSong;
   }
 
   play() {
@@ -149,6 +179,14 @@ class CorePlayer extends React.Component {
     this.currentSong.setPosition(this.currentSong.durationEstimate * rate);
   }
 
+  repeatList() {
+    this.setState({ isListRepeat: true });
+  }
+
+  repeatItem() {
+    this.setState({ isListRepeat: false });
+  }
+
   render() {
     return (
       <div className="row">
@@ -161,11 +199,14 @@ class CorePlayer extends React.Component {
                        isPlaying={ this.state.isPlaying } />
         </div>
 
-        <div className="col-md-8">
+        <div className="col-md-7">
           <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
         </div>
         <div className="col-md-2">
           <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
+        </div>
+        <div className="col-md-1">
+          <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
         </div>
 
         <div className="col-md-12">
