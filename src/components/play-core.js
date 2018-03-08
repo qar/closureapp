@@ -34,6 +34,15 @@ class CorePlayer extends React.Component {
     }
   }
 
+  _findPrevSound(currentSoundPth) {
+    const idx = this.queue.findIndex(i => i.path === currentSoundPth);
+    if (idx === 0) {
+      return this.queue[0]; // remain at the beginning
+    } else {
+      return this.queue[idx - 1];
+    }
+  }
+
   playerSetup() {
     soundManager.setup({
       url: '/node_modules/soundmanager2/swf/soundmanager2.swf',
@@ -166,11 +175,17 @@ class CorePlayer extends React.Component {
   }
 
   prev() {
-    /* TODO */
+    if (!this.currentSong) return;
+    const prevSoundPath = this._findPrevSound(this.currentSong.url).path;
+    this.currentSong.stop();
+    this.prepareSong(prevSoundPath).play();
   }
 
   next() {
-    /* TODO */
+    if (!this.currentSong) return;
+    const prevSoundPath = this._findNextSound(this.currentSong.url).path;
+    this.currentSong.stop();
+    this.prepareSong(prevSoundPath).play();
   }
 
   stop() {
