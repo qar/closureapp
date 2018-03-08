@@ -4,6 +4,7 @@ import PlayQueue from '../components/play-queue';
 import PlayProgressBar from '../components/play-progressbar';
 import PlayDuration from '../components/play-duration';
 import PlayModeControl from '../components/play-mode-control';
+import PlayVolumeControl from '../components/play-volume-control';
 
 class CorePlayer extends React.Component {
   constructor(props) {
@@ -16,6 +17,7 @@ class CorePlayer extends React.Component {
       totalTime: 0,
       isPlaying: false,
       isListRepeat: true,
+      volume: 40,
     };
 
     this.currentSong = null;
@@ -84,6 +86,8 @@ class CorePlayer extends React.Component {
     const _this = this;
 
     return {
+      volume: this.state.volume,
+
       onplay: () => {
         this.setState({ isPlaying: true });
       },
@@ -175,6 +179,11 @@ class CorePlayer extends React.Component {
     this.currentSong.stop();
   }
 
+  setVolume(volume) {
+    this.setState({ volume });
+    soundManager.setVolume(volume);
+  }
+
   setPos(rate) {
     this.currentSong.setPosition(this.currentSong.durationEstimate * rate);
   }
@@ -199,7 +208,10 @@ class CorePlayer extends React.Component {
                        isPlaying={ this.state.isPlaying } />
         </div>
 
-        <div className="col-md-7">
+        <div className="col-md-2">
+          <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
+        </div>
+        <div className="col-md-5">
           <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
         </div>
         <div className="col-md-2">
