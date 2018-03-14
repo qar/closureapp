@@ -6,6 +6,9 @@
   "dependencies": {
     "bootstrap": "3.3.6",
     "electron": "^1.8.2",
+    "jsmediatags": "^3.8.1",
+    "md5-file": "^3.2.3",
+    "nedb": "^1.8.0",
     "react": "^16.2.0",
     "react-bootstrap": "^0.32.1",
     "react-dom": "^16.2.0",

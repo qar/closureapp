@@ -3,8 +3,6 @@ import React from 'react';
 class PlayQueue extends React.Component {
   constructor(props) {
     super(props);
-
-    this.playList = props.queue;
   }
 
   renderListItem(obj, i) {
@@ -12,7 +10,7 @@ class PlayQueue extends React.Component {
       <li className={ "list-group-item " + (obj.path === this.props.currentSound ? "active" : "") }
           onClick={ () => this.props.play(obj.path) }
           key={ i }>
-        {obj.name}
+        {obj.title}
       </li>
     );
   }
@@ -20,7 +18,7 @@ class PlayQueue extends React.Component {
   render() {
     return (
       <ul className="list-group">
-        { this.playList.map((obj, i) => this.renderListItem(obj, i)) }
+        { this.props.queue.map((obj, i) => this.renderListItem(obj, i)) }
       </ul>
     );
   }

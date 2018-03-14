@@ -7,14 +7,9 @@ import fs from 'fs';
 import { remote } from 'electron';
 import CorePlayer from './components/play-core';
 import events from './events';
-
-const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
-const soundFiles = fs.readdirSync(MEDIA_DIR).map(f => {
-  return {
-    name: f,
-    path: path.resolve(MEDIA_DIR, f)
-  };
-});
+import { soundsDb } from './store';
+import jsmediatags from 'jsmediatags';
+import md5File from 'md5-file';
 
 const soundManager = window.soundManager;
 
@@ -107,9 +102,37 @@ function openFileDialog() {
     ]
   }, function(filepaths) {
     filepaths.forEach(f => {
+      const hash = md5File.sync(f);
       const name = path.basename(f);
-      const dest = path.resolve(remote.app.getPath('home'), 'my_music_repo', name);
+      const dest = path.resolve(remote.app.getPath('home'), 'my_music_repo', [hash, path.extname(f)].join(''));
       fs.createReadStream(f).pipe(fs.createWriteStream(dest));
+      jsmediatags.read(f, {
+        onSuccess: tag => {
+          const item = {
+            _id: hash,
+            fileExt: path.extname(f), // with the dot, like .mp3
+            fileSize: tag.size,
+            album: tag.tags.album,
+            artist: tag.tags.artist,
+            title: tag.tags.title,
+            track: tag.tags.track,
+          };
+
+          soundsDb.findOne({ _id: hash }, function(err, result) {
+            if (!err && !result) { // noexist
+              soundsDb.insert(item, function(err, result) {
+                // handle error
+              });
+            } else {
+              // handle error
+            }
+          });
+        },
+
+        onError: error => {
+          // handle error
+        },
+      });
     });
   });
 }
@@ -119,6 +142,6 @@ setMainMenu();
 // ========================================
 
 ReactDOM.render(
-  <CorePlayer queue={ soundFiles } />,
+  <CorePlayer />,
   document.getElementById('player')
 );

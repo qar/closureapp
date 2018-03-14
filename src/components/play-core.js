@@ -7,14 +7,18 @@ import PlayModeControl from '../components/play-mode-control';
 import PlayVolumeControl from '../components/play-volume-control';
 import AccountSettings from '../components/account-settings';
 import events from '../events';
+import path from 'path';
+import { remote } from 'electron';
+import { soundsDb } from '../store';
+
+const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
 
 class CorePlayer extends React.Component {
   constructor(props) {
     super(props);
 
-    this.queue = props.queue;
-
     this.state = {
+      queue: [],
       passTime: 0,
       totalTime: 0,
       isPlaying: false,
@@ -23,30 +27,42 @@ class CorePlayer extends React.Component {
       showSettings: false,
     };
 
-    this.currentSong = null;
-
     this.playerSetup();
+    this.currentSong = null;
 
     events.on('goto:settings', () => {
       this.setState({ showSettings: true });
     });
+
+    soundsDb.find({}, (err, items) => {
+      if (err) {
+        // handle error
+        return;
+      }
+
+      items.forEach(item => {
+        item.path = path.resolve(MEDIA_DIR, [item._id, item.fileExt].join(''))
+      });
+
+      this.setState({ queue: items });
+    });
   }
 
   _findNextSound(currentSoundPth) {
-    const idx = this.queue.findIndex(i => i.path === currentSoundPth);
-    if (idx + 1 === this.queue.length) {
-      return this.queue[0]; // return to the begining
+    const idx = this.state.queue.findIndex(i => i.path === currentSoundPth);
+    if (idx + 1 === this.state.queue.length) {
+      return this.state.queue[0]; // return to the begining
     } else {
-      return this.queue[idx + 1];
+      return this.state.queue[idx + 1];
     }
   }
 
   _findPrevSound(currentSoundPth) {
-    const idx = this.queue.findIndex(i => i.path === currentSoundPth);
+    const idx = this.state.queue.findIndex(i => i.path === currentSoundPth);
     if (idx === 0) {
-      return this.queue[0]; // remain at the beginning
+      return this.state.queue[0]; // remain at the beginning
     } else {
-      return this.queue[idx - 1];
+      return this.state.queue[idx - 1];
     }
   }
 
@@ -220,10 +236,10 @@ class CorePlayer extends React.Component {
 
   _renderMainZone() {
     if (this.state.showSettings) {
-      return <AccountSettings /> 
+      return <AccountSettings />
     } else {
       return <div className="col-md-12">
-          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
+          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
         </div>
     }
   }
@@ -253,7 +269,9 @@ class CorePlayer extends React.Component {
           <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
         </div>
 
-        { this._renderMainZone() }
+        <div className="col-md-12">
+          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
+        </div>
       </div>
     );
   }
