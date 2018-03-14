@@ -11,6 +11,8 @@ class PlayQueue extends React.Component {
           onDoubleClick={ () => this.props.play(obj.path) }
           key={ i }>
         <td> {obj.title} </td>
+        <td> {obj.artist} </td>
+        <td> {obj.album} </td>
       </tr>
     );
   }
@@ -19,6 +21,13 @@ class PlayQueue extends React.Component {
     return (
       <div className="row table-responsive">
         <table className="table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Artist</th>
+              <th>Album</th>
+            </tr>
+          </thead>
           <tbody>
           { this.props.queue.map((obj, i) => this.renderListItem(obj, i)) }
           </tbody>
