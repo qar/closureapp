@@ -139,6 +139,7 @@ class CorePlayer extends React.Component {
       onstop: () => {
         this.setState({
           passTime: 0,
+          totalTime: 0,
           width: '0%',
           isPlaying: false
         });
@@ -190,6 +191,7 @@ class CorePlayer extends React.Component {
           width: '0%',
           isPlaying: false,
           passTime: 0,
+          totalTime: 0,
         });
 
         this._playCount();
