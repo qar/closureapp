@@ -7,19 +7,23 @@ class PlayQueue extends React.Component {
 
   renderListItem(obj, i) {
     return (
-      <li className={ "list-group-item " + (obj.path === this.props.currentSound ? "active" : "") }
-          onClick={ () => this.props.play(obj.path) }
+      <tr className={ (obj.path === this.props.currentSound ? "success" : "") }
+          onDoubleClick={ () => this.props.play(obj.path) }
           key={ i }>
-        {obj.title}
-      </li>
+        <td> {obj.title} </td>
+      </tr>
     );
   }
 
   render() {
     return (
-      <ul className="list-group">
-        { this.props.queue.map((obj, i) => this.renderListItem(obj, i)) }
-      </ul>
+      <div className="row table-responsive">
+        <table className="table">
+          <tbody>
+          { this.props.queue.map((obj, i) => this.renderListItem(obj, i)) }
+          </tbody>
+        </table>
+      </div>
     );
   }
 }
