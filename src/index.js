@@ -102,6 +102,9 @@ function openFileDialog() {
       { name: 'Music', extensions: ['mp3'] }
     ]
   }, function(filepaths) {
+    if (!filepaths) {
+      return;
+    }
     filepaths.forEach(f => {
       const hash = md5File.sync(f);
       const name = path.basename(f);
