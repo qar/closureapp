@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { remote } from 'electron';
 import CorePlayer from './components/play-core';
+import events from './events';
 
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
 const soundFiles = fs.readdirSync(MEDIA_DIR).map(f => {
@@ -67,6 +68,14 @@ function setMainMenu() {
       submenu: [
         {role: 'about'},
         {type: 'separator'},
+
+        {
+          label: 'Preferences',
+          click () { events.emit('goto:settings') }
+        },
+
+        {type: 'separator'},
+
         {role: 'services', submenu: []},
         {type: 'separator'},
         {role: 'hide'},

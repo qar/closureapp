@@ -5,6 +5,8 @@ import PlayProgressBar from '../components/play-progressbar';
 import PlayDuration from '../components/play-duration';
 import PlayModeControl from '../components/play-mode-control';
 import PlayVolumeControl from '../components/play-volume-control';
+import AccountSettings from '../components/account-settings';
+import events from '../events';
 
 class CorePlayer extends React.Component {
   constructor(props) {
@@ -18,11 +20,16 @@ class CorePlayer extends React.Component {
       isPlaying: false,
       isListRepeat: true,
       volume: 40,
+      showSettings: false,
     };
 
     this.currentSong = null;
 
     this.playerSetup();
+
+    events.on('goto:settings', () => {
+      this.setState({ showSettings: true });
+    });
   }
 
   _findNextSound(currentSoundPth) {
@@ -127,7 +134,7 @@ class CorePlayer extends React.Component {
     const globalState = this.state;
     const _this = this;
 
-    const nextSoundPath = this._findNextSound(path).path; 
+    const nextSoundPath = this._findNextSound(path).path;
 
     const opts = Object.assign({}, this._createSoundOpts(),  {
       url: path,
@@ -211,6 +218,16 @@ class CorePlayer extends React.Component {
     this.setState({ isListRepeat: false });
   }
 
+  _renderMainZone() {
+    if (this.state.showSettings) {
+      return <AccountSettings /> 
+    } else {
+      return <div className="col-md-12">
+          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
+        </div>
+    }
+  }
+
   render() {
     return (
       <div className="row">
@@ -236,9 +253,7 @@ class CorePlayer extends React.Component {
           <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
         </div>
 
-        <div className="col-md-12">
-          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
-        </div>
+        { this._renderMainZone() }
       </div>
     );
   }
