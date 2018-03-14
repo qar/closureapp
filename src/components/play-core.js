@@ -146,6 +146,37 @@ class CorePlayer extends React.Component {
     };
   }
 
+  _playCount() {
+    const id = path.parse(this.currentSong.url).name;
+    soundsDb.findOne({ _id: id }, (err, sound) => {
+      if (err) {
+        // handle error
+        return
+      }
+
+      if (!sound.playCount) {
+        sound.playCount = 0;
+      }
+
+      sound.playCount += 1;
+
+      soundsDb.update({ _id: id }, { $set: { playCount: sound.playCount }}, (err, sound) => {
+        if (err) {
+          // handle error
+        }
+      });
+
+      this.state.queue.forEach(i => {
+        if (i._id === id) {
+          i.playCount = sound.playCount;
+        }
+      });
+
+      this.setState({ queue: this.state.queue });
+
+    });
+  }
+
   prepareSong(path) {
     const globalState = this.state;
     const _this = this;
@@ -160,6 +191,8 @@ class CorePlayer extends React.Component {
           isPlaying: false,
           passTime: 0,
         });
+
+        this._playCount();
 
         if (!this.state.isListRepeat) {
           this.currentSong.play();
