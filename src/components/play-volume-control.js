@@ -16,6 +16,7 @@ class PlayVolumeControl extends React.Component {
   render() {
     return (
       <div className="progress-bar-container core-control-panel">
+        <span className="glyphicon glyphicon-volume-up"></span> &nbsp;&nbsp;
         <div className="progress player-progress" ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
           <div className="progress-bar progress-bar-default"
                role="progressbar"

@@ -292,17 +292,19 @@ class App extends React.Component {
                          isPlaying={ this.state.isPlaying } />
           </div>
 
-          <div className="col-md-2">
-            <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
+          <div className="col-md-1">
+            <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
           </div>
+
           <div className="col-md-5">
             <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
           </div>
+
           <div className="col-md-2">
             <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
           </div>
-          <div className="col-md-1">
-            <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
+          <div className="col-md-2">
+            <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
           </div>
         </div>
 
