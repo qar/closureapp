@@ -20,7 +20,7 @@ class PlayModeControl extends React.Component {
 
   render() {
     return (
-      <ul className="player-controls">
+      <ul className="player-controls core-control-panel">
         {this.renderRepeatBtn(this.props.isListRepeat)}
       </ul>
     );

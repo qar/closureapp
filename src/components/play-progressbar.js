@@ -15,14 +15,16 @@ class PlayProgressBar extends React.Component {
 
   render() {
     return (
-      <div className="progress player-progress" ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
-        <div className="progress-bar progress-bar-default"
-             role="progressbar"
-             aria-valuenow="40"
-             aria-valuemin="0"
-             aria-valuemax="100"
-             style={{ width: this.props.barProgress }}>
-          <span className="sr-only">40% Complete (success)</span>
+      <div className="progress-bar-container core-control-panel">
+        <div className="progress player-progress" ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
+          <div className="progress-bar progress-bar-default"
+               role="progressbar"
+               aria-valuenow="40"
+               aria-valuemin="0"
+               aria-valuemax="100"
+               style={{ width: this.props.barProgress }}>
+            <span className="sr-only">40% Complete (success)</span>
+          </div>
         </div>
       </div>
     );

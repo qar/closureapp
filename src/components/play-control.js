@@ -21,7 +21,7 @@ class PlayControl extends React.Component {
 
   render() {
     return (
-      <ul className="player-controls">
+      <ul className="player-controls core-control-panel">
         <li className="control-btn" onClick={() => this.props.onPrevBtnClicked()}><span className="glyphicon glyphicon-step-backward"></span></li>
 
         {this.renderPlayBtn(this.props.isPlaying)}

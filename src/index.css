@@ -1,4 +1,16 @@
+/* fonts */
+@font-face {
+  font-family: "Roboto Thin";
+  src: url("../public/fonts/Roboto/Roboto-Thin.ttf");
+}
+
 /* player controls */
+.core-control-panel {
+  height: 100px;
+  line-height: 100px;
+  vertical-align: middle;
+}
+
 .player-controls {
     display: inline-block;
     margin: 0;
@@ -24,12 +36,17 @@
 }
 
 /* player progress */
+.progress-bar-container {
+  display: inline-block;
+  width: 100%;
+}
+
 .player-progress {
     display: inline-block;
     width: 100%;
     margin-bottom: 0;
     height: 9px;
-    border-radius: 0;
+    border-radius: 4px; 
 }
 
 .player-progress:hover {
@@ -46,8 +63,7 @@
 .player-duration {
     display: inline-block;
     width: 100%;
-    font-family: monospace;
-    letter-spacing: 1px;
+    font-family: "Roboto Thin";
     font-size: 14px;
     color: #A1A1A1;
 }
