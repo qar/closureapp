@@ -281,31 +281,35 @@ class App extends React.Component {
 
   render() {
     return (
-      <div className="row">
-        <div className="col-md-2">
-          <PlayControl onPlayBtnClicked={ () => this.play() }
-                       onPauseBtnClicked={ () => this.pause() }
-                       onPrevBtnClicked={ () => this.prev() }
-                       onNextBtnClicked={ () => this.next() }
-                       onStopBtnClicked={ () => this.stop() }
-                       isPlaying={ this.state.isPlaying } />
+      <div>
+        <div className="app-title-bar">
+          <div className="col-md-2">
+            <PlayControl onPlayBtnClicked={ () => this.play() }
+                         onPauseBtnClicked={ () => this.pause() }
+                         onPrevBtnClicked={ () => this.prev() }
+                         onNextBtnClicked={ () => this.next() }
+                         onStopBtnClicked={ () => this.stop() }
+                         isPlaying={ this.state.isPlaying } />
+          </div>
+
+          <div className="col-md-2">
+            <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
+          </div>
+          <div className="col-md-5">
+            <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
+          </div>
+          <div className="col-md-2">
+            <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
+          </div>
+          <div className="col-md-1">
+            <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
+          </div>
         </div>
 
-        <div className="col-md-2">
-          <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
-        </div>
-        <div className="col-md-5">
-          <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
-        </div>
-        <div className="col-md-2">
-          <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
-        </div>
-        <div className="col-md-1">
-          <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
-        </div>
-
-        <div className="col-md-12">
-          <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
+        <div className="app-body">
+          <div className="container-fluid">
+            <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
+          </div>
         </div>
       </div>
     );

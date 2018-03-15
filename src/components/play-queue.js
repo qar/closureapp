@@ -20,7 +20,7 @@ class PlayQueue extends React.Component {
 
   render() {
     return (
-      <div className="row table-responsive">
+      <div className="play-queue row table-responsive">
         <table className="table">
           <thead>
             <tr>

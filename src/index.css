@@ -4,6 +4,40 @@
   src: url("../public/fonts/Roboto/Roboto-Thin.ttf");
 }
 
+body {
+  overflow: hidden;
+}
+.main-wrapper {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+
+.app-title-bar {
+  -webkit-app-region: drag;
+  width: 100%;
+  height: 100px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: white;
+  padding: 0;
+  margin: 0;
+}
+
+.app-body {
+  margin-top: 100px;
+  width: 100%;
+  height: 100%; 
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: auto;
+}
+
 /* player controls */
 .core-control-panel {
   height: 100px;
@@ -35,6 +69,40 @@
 
 .player-controls .control-btn:active {
     background-color: #ddd;
+}
+
+table {
+        width: 100%;
+    }
+
+thead, tbody, tr, td, th { display: block; }
+
+tr:after {
+    content: ' ';
+    display: block;
+    visibility: hidden;
+    clear: both;
+}
+
+thead th {
+    height: 30px;
+
+    /*text-align: left;*/
+}
+
+tbody {
+    height: 100%;
+    overflow-y: auto;
+}
+
+thead {
+    /* fallback */
+}
+
+
+tbody td, thead th {
+    width: 25%;
+    float: left;
 }
 
 /* player progress */
