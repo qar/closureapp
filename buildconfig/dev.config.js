@@ -21,6 +21,11 @@ module.exports = {
       },
 
       {
+        test: /\.woff($|\?)|\.woff2($|\?)|\.ttf($|\?)|\.eot($|\?)|\.svg($|\?)/,
+        loader: 'url-loader'
+      },
+
+      {
         test: /\.js$/,
         exclude: /node_modules/,
         use: "babel-loader"

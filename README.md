@@ -9,3 +9,13 @@ first, you need to get webpack running by `yarn start`, and then run `yarn run e
 ## Distribution
 
 Use [electron-packager](https://www.npmjs.com/package/electron-packager) to package this app.
+
+## This project CAN NOT be done without
+
+- [SoundManager2](http://www.schillmania.com/projects/soundmanager2/)
+- [Electron](https://electronjs.org/)
+- [Bootstrap](https://getbootstrap.co/)
+- [React](https://reactjs.org/)
+- [Webpack](https://webpack.js.org/)
+- [Babeljs](https://babeljs.io/)
+- And some many other brilliant projets by dedicated people
