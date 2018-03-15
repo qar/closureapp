@@ -12,12 +12,14 @@
 }
 
 .player-controls {
-    display: inline-block;
+    width: 100%;
+    display: table;
     margin: 0;
+    padding-left: 0;
 }
 
 .player-controls .control-btn {
-    display: inline-block;
+    display: table-cell;
     padding: 0;
     list-style: none;
     width: 36px;
