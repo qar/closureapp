@@ -6,7 +6,7 @@ import 'soundmanager2';
 import path from 'path';
 import fs from 'fs';
 import { remote } from 'electron';
-import CorePlayer from './components/play-core';
+import App from './components/app';
 import events from './events';
 import { soundsDb } from './store';
 import jsmediatags from 'jsmediatags';
@@ -146,6 +146,6 @@ setMainMenu();
 // ========================================
 
 ReactDOM.render(
-  <CorePlayer />,
+  <App />,
   document.getElementById('player')
 );

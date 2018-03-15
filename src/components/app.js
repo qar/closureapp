@@ -13,7 +13,7 @@ import { soundsDb } from '../store';
 
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
 
-class CorePlayer extends React.Component {
+class App extends React.Component {
   constructor(props) {
     super(props);
 
@@ -312,5 +312,5 @@ class CorePlayer extends React.Component {
   }
 }
 
-export default CorePlayer;
+export default App;
 
