@@ -5,7 +5,7 @@ const fs = require('fs');
 
 const MEDIA_DIR = path.resolve(app.getPath('home'), 'my_music_repo');
 
-if (!fs.existSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR)
+if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR)
 
 // 保持一个对于 window 对象的全局引用，如果你不这样做，
 // 当 JavaScript 对象被垃圾回收， window 会被自动地关闭
