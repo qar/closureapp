@@ -7,6 +7,8 @@ const MEDIA_DIR = path.resolve(app.getPath('home'), 'my_music_repo');
 
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR)
 
+let willQuit = false;
+
 // 保持一个对于 window 对象的全局引用，如果你不这样做，
 // 当 JavaScript 对象被垃圾回收， window 会被自动地关闭
 let win
@@ -18,6 +20,15 @@ function createWindow () {
   // 然后加载应用的 index.html。
   win.loadURL('file://' + __dirname + '/public/index.html');
 
+  win.on('close', (ev) => {
+    if (!willQuit) {
+      ev.preventDefault();
+      win.hide();
+    } else {
+      win = null;
+    }
+  });
+
   // 当 window 被关闭，这个事件会被触发。
   win.on('closed', () => {
     // 取消引用 window 对象，如果你的应用支持多窗口的话，
@@ -25,7 +36,13 @@ function createWindow () {
     // 与此同时，你应该删除相应的元素。
     win = null
   })
+
+  win.on('show', (ev) => {
+    win.show();
+  });
 }
+
+app.on('before-quit', () => { willQuit = true });
 
 // Electron 会在初始化后并准备
 // 创建浏览器窗口时，调用这个函数。
@@ -46,6 +63,10 @@ app.on('activate', () => {
   // 通常在应用程序中重新创建一个窗口。
   if (win === null) {
     createWindow()
+  } else {
+    if (!win.isVisible()) {
+      win.restore();
+    }
   }
 })
 
