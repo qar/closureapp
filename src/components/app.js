@@ -283,28 +283,30 @@ class App extends React.Component {
     return (
       <div>
         <div className="app-title-bar">
-          <div className="col-md-2">
-            <PlayControl onPlayBtnClicked={ () => this.play() }
-                         onPauseBtnClicked={ () => this.pause() }
-                         onPrevBtnClicked={ () => this.prev() }
-                         onNextBtnClicked={ () => this.next() }
-                         onStopBtnClicked={ () => this.stop() }
-                         isPlaying={ this.state.isPlaying } />
-          </div>
+          <div className="controls-bar">
+            <div className="col-md-2">
+              <PlayControl onPlayBtnClicked={ () => this.play() }
+                           onPauseBtnClicked={ () => this.pause() }
+                           onPrevBtnClicked={ () => this.prev() }
+                           onNextBtnClicked={ () => this.next() }
+                           onStopBtnClicked={ () => this.stop() }
+                           isPlaying={ this.state.isPlaying } />
+            </div>
 
-          <div className="col-md-1">
-            <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
-          </div>
+            <div className="col-md-1">
+              <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
+            </div>
 
-          <div className="col-md-5">
-            <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
-          </div>
+            <div className="col-md-5">
+              <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
+            </div>
 
-          <div className="col-md-2">
-            <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
-          </div>
-          <div className="col-md-2">
-            <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
+            <div className="col-md-2">
+              <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
+            </div>
+            <div className="col-md-2">
+              <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
+            </div>
           </div>
         </div>
 
@@ -319,4 +321,3 @@ class App extends React.Component {
 }
 
 export default App;
-
