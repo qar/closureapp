@@ -6,14 +6,14 @@ class PlayControl extends React.Component {
       // render paused icon
       return (
         <li className="control-btn" onClick={() => this.props.onPauseBtnClicked()}>
-          <span className="glyphicon glyphicon-pause"></span>
+          <span className="icon-pause"></span>
         </li>
       );
     } else {
       // is paused or simply not playing, render play icon
       return (
         <li className="control-btn" onClick={() => this.props.onPlayBtnClicked()}>
-          <span className="glyphicon glyphicon-play"></span>
+          <span className="icon-play-button"></span>
         </li>
       );
     }
@@ -22,12 +22,12 @@ class PlayControl extends React.Component {
   render() {
     return (
       <ul className="player-controls core-control-panel">
-        <li className="control-btn" onClick={() => this.props.onPrevBtnClicked()}><span className="glyphicon glyphicon-step-backward"></span></li>
+        <li className="control-btn" onClick={() => this.props.onPrevBtnClicked()}><span className="icon-previous"></span></li>
 
         {this.renderPlayBtn(this.props.isPlaying)}
 
-        <li className="control-btn" onClick={() => this.props.onNextBtnClicked()}><span className="glyphicon glyphicon-step-forward"></span></li>
-        <li className="control-btn" onClick={() => this.props.onStopBtnClicked()}><span className="glyphicon glyphicon-stop"></span></li>
+        <li className="control-btn" onClick={() => this.props.onNextBtnClicked()}><span className="icon-next"></span></li>
+        <li className="control-btn" onClick={() => this.props.onStopBtnClicked()}><span className="icon-stop"></span></li>
       </ul>
     );
   }

@@ -5,14 +5,14 @@ class PlayModeControl extends React.Component {
     if (isListRepeat) {
       return (
         <li className="control-btn" onClick={() => this.props.onListRepeatClicked()}>
-          <span className="glyphicon glyphicon-retweet"></span>
+          <span className="icon-repeat"></span>
         </li>
       );
     } else {
       // is paused or simply not playing, render play icon
       return (
         <li className="control-btn" onClick={() => this.props.onItemRepeatClicked()}>
-          <span className="glyphicon glyphicon-repeat"></span>
+          <span className="icon-musical-note"></span>
         </li>
       );
     }

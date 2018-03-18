@@ -284,7 +284,7 @@ class App extends React.Component {
       <div>
         <div className="app-title-bar">
           <div className="controls-bar">
-            <div className="col-md-2">
+            <div className="play-control-bar">
               <PlayControl onPlayBtnClicked={ () => this.play() }
                            onPauseBtnClicked={ () => this.pause() }
                            onPrevBtnClicked={ () => this.prev() }
@@ -293,18 +293,18 @@ class App extends React.Component {
                            isPlaying={ this.state.isPlaying } />
             </div>
 
-            <div className="col-md-1">
+            <div className="play-mode-bar">
               <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
             </div>
 
-            <div className="col-md-5">
+            <div className="play-progress-bar">
               <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
             </div>
 
-            <div className="col-md-2">
+            <div className="play-duration-bar">
               <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
             </div>
-            <div className="col-md-2">
+            <div className="play-volume-bar">
               <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
             </div>
           </div>

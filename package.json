@@ -4,7 +4,6 @@
   "private": true,
   "main": "main.js",
   "dependencies": {
-    "bootstrap": "3.3.6",
     "electron": "^1.8.2",
     "jsmediatags": "^3.8.1",
     "md5-file": "^3.2.3",
