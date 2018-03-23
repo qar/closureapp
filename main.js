@@ -28,7 +28,7 @@ function createWindow () {
   win = new BrowserWindow({width: 1300, height: 800, titleBarStyle: 'hidden' })
 
   // 然后加载应用的 index.html。
-  win.loadURL('file://' + __dirname + '/public/index.html');
+  win.loadURL(`file://${__dirname}/index.html`);
 
   win.on('close', (ev) => {
     if (!willQuit) {
