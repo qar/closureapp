@@ -8,7 +8,7 @@ import PlayVolumeControl from '../components/play-volume-control';
 import AccountSettings from '../components/account-settings';
 import events from '../events';
 import path from 'path';
-import { remote } from 'electron';
+import { remote, ipcRenderer } from 'electron';
 
 const soundsDb = remote.getGlobal('soundsDb');
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
@@ -45,6 +45,12 @@ class App extends React.Component {
       });
 
       this.setState({ queue: items });
+
+      ipcRenderer.on('addNewItem', (ev, newItem) => {
+        newItem.path = path.resolve(MEDIA_DIR, [newItem._id, newItem.fileExt].join(''))
+        this.state.queue.push(newItem);
+        this.setState({ queue: this.state.queue });
+      });
     });
   }
 
@@ -174,7 +180,6 @@ class App extends React.Component {
       });
 
       this.setState({ queue: this.state.queue });
-
     });
   }
 
