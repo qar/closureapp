@@ -1,5 +1,5 @@
 import React from 'react';
-import './index.scss';
+import 'styles/global.scss';
 import ReactDOM from 'react-dom';
 import 'soundmanager2';
 import path from 'path';

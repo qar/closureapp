@@ -1,7 +1,7 @@
 import React from 'react';
 import styles from './PlayControl.scss';
 import playerStyles from './Player.scss';
-import iconStyles from '../../src/styles/icon.scss';
+import iconStyles from 'styles/icon.scss';
 
 class PlayControl extends React.Component {
   renderPlayBtn(isPlaying) {

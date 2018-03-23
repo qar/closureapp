@@ -1,6 +1,6 @@
 import React from 'react';
 import playerStyles from './Player.scss';
-import iconStyles from '../../src/styles/icon.scss';
+import iconStyles from 'styles/icon.scss';
 
 class PlayVolumeControl extends React.Component {
   constructor(props) {
