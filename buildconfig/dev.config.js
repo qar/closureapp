@@ -10,6 +10,12 @@ module.exports = {
     path: path.resolve(__dirname, '../dist')
   },
 
+  resolve: {
+    alias: {
+      components: path.resolve(__dirname, '../components')
+    }
+  },
+
   module: {
     rules: [
       {
@@ -24,9 +30,16 @@ module.exports = {
         test: /\.scss$/,
         use: [
           { loader: "style-loader" },
-          { loader: "css-loader" },
+          {
+            loader: "css-loader",
+            options: {
+              // https://github.com/webpack-contrib/css-loader#modules
+              modules: true,
+              localIdentName: '[name]__[local]___[hash:base64:5]',
+            }
+          },
           { loader: 'sass-loader' }
-        ]
+        ],
       },
 
       {

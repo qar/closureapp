@@ -1,0 +1,27 @@
+.player_controls {
+    width: 100%;
+    display: flex;
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+
+    .control_btn {
+        display: flex;
+        flex: 1;
+        min-width: 36px;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.7);
+        transition: all .2s ease-out;
+    }
+
+    .control_btn:hover {
+        cursor: pointer;
+        color: rgba(255, 255, 255, 1);
+        text-shadow: 0 0 2px white;
+    }
+
+    .control_btn:active {
+        color: rgba(255, 255, 255, 0.5);
+    }
+}

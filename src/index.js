@@ -5,7 +5,7 @@ import 'soundmanager2';
 import path from 'path';
 import fs from 'fs';
 import { ipcRenderer, remote } from 'electron';
-import App from './components/app';
+import App from 'components/app';
 import events from './events';
 const soundsDb = remote.getGlobal('soundsDb');
 

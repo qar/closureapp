@@ -1,4 +1,6 @@
 import React from 'react';
+import playerStyles from './Player.scss';
+import iconStyles from '../../src/styles/icon.scss';
 
 class PlayVolumeControl extends React.Component {
   constructor(props) {
@@ -15,10 +17,10 @@ class PlayVolumeControl extends React.Component {
 
   render() {
     return (
-      <div className="progress-bar-container core-control-panel">
-        <span className="icon-volume"></span> &nbsp;&nbsp;
-        <div className="progress player-progress" ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
-          <div className="progress-bar progress-bar-default"
+      <div className={ `${playerStyles.progress_bar_container} ${playerStyles.core_ctrl_panel}` }>
+        <span className={ `${iconStyles.icon} ${iconStyles.icon_volume}` }></span> &nbsp;&nbsp;
+        <div className={ `${playerStyles.progress} ${playerStyles.player_progress}` } ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
+          <div className={ playerStyles.progress_bar }
                role="progressbar"
                style={{ width: this.props.volume + '%' }}>
           </div>

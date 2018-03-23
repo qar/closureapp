@@ -1,0 +1,31 @@
+@font-face {
+    font-family: "Music Player Icon";
+    src: url("./icon.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
+.icon {
+    padding-top: 1px;
+    font-family: "Music Player Icon";
+    font-size: 20px;
+    font-style: normal;
+    text-align: center;
+}
+
+.icon_equalizer:before { content: "\f100"; }
+.icon_fast_forward:before { content: "\f101"; }
+.icon_favorite:before { content: "\f102"; }
+.icon_headphones:before { content: "\f103"; }
+.icon_menu:before { content: "\f104"; }
+.icon_musical_note:before { content: "\f105"; }
+.icon_mute:before { content: "\f106"; }
+.icon_next:before { content: "\f107"; }
+.icon_pause:before { content: "\f108"; }
+.icon_play_button:before { content: "\f109"; }
+.icon_previous:before { content: "\f10a"; }
+.icon_repeat:before { content: "\f10b"; }
+.icon_rewind:before { content: "\f10c"; }
+.icon_shuffle:before { content: "\f10d"; }
+.icon_stop:before { content: "\f10e"; }
+.icon_volume:before { content: "\f10f"; }

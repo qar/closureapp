@@ -1,4 +1,5 @@
 import React from 'react';
+import styles from './PlayQueue.scss';
 
 class PlayQueue extends React.Component {
   constructor(props) {
@@ -7,7 +8,7 @@ class PlayQueue extends React.Component {
 
   renderListItem(obj, i) {
     return (
-      <tr className={ (obj.path === this.props.currentSound ? "success" : "") }
+      <tr className={ (obj.path === this.props.currentSound ? styles.active: "") }
           onDoubleClick={ () => this.props.play(obj.path) }
           key={ i }>
         <td> {obj.title} </td>
@@ -20,8 +21,8 @@ class PlayQueue extends React.Component {
 
   render() {
     return (
-      <div className="play-queue row table-responsive">
-        <table className="table">
+      <div className={ `${styles.queue} row table-responsive` }>
+        <table className={ styles.table }>
           <thead>
             <tr>
               <th>Title</th>

@@ -1,14 +1,15 @@
 import React from 'react';
-import PlayControl from '../components/play-control';
-import PlayQueue from '../components/play-queue';
-import PlayProgressBar from '../components/play-progressbar';
-import PlayDuration from '../components/play-duration';
-import PlayModeControl from '../components/play-mode-control';
-import PlayVolumeControl from '../components/play-volume-control';
-import AccountSettings from '../components/account-settings';
-import events from '../events';
+import PlayControl from 'components/Player/PlayControl';
+import PlayQueue from 'components/Player/PlayQueue';
+import PlayProgressBar from 'components/Player/PlayProgressbar';
+import PlayDuration from 'components/Player/PlayDuration';
+import PlayModeControl from 'components/Player/PlayModeControl';
+import PlayVolumeControl from 'components/Player/PlayVolumeControl';
+import AccountSettings from 'components/account-settings';
+import events from '../src/events';
 import path from 'path';
 import { remote, ipcRenderer } from 'electron';
+import playerStyles from 'components/Player/Player.scss';
 
 const soundsDb = remote.getGlobal('soundsDb');
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
@@ -287,9 +288,9 @@ class App extends React.Component {
   render() {
     return (
       <div>
-        <div className="app-title-bar">
-          <div className="controls-bar">
-            <div className="play-control-bar">
+        <div className={ playerStyles.app_title_bar }>
+          <div className={ playerStyles.controls_bar }>
+            <div className={ playerStyles.play_control_bar }>
               <PlayControl onPlayBtnClicked={ () => this.play() }
                            onPauseBtnClicked={ () => this.pause() }
                            onPrevBtnClicked={ () => this.prev() }
@@ -298,24 +299,24 @@ class App extends React.Component {
                            isPlaying={ this.state.isPlaying } />
             </div>
 
-            <div className="play-mode-bar">
+            <div className={ playerStyles.play_mode_bar }>
               <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
             </div>
 
-            <div className="play-progress-bar">
+            <div className={ playerStyles.play_progress_bar }>
               <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
             </div>
 
-            <div className="play-duration-bar">
+            <div className={ playerStyles.play_duration_bar }>
               <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
             </div>
-            <div className="play-volume-bar">
+            <div className={ playerStyles.play_volume_bar }>
               <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
             </div>
           </div>
         </div>
 
-        <div className="app-body">
+        <div className={ playerStyles.app_body }>
           <div className="container-fluid">
             <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
           </div>
