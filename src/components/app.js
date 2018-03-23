@@ -9,8 +9,8 @@ import AccountSettings from '../components/account-settings';
 import events from '../events';
 import path from 'path';
 import { remote } from 'electron';
-import { soundsDb } from '../store';
 
+const soundsDb = remote.getGlobal('soundsDb');
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
 
 class App extends React.Component {
