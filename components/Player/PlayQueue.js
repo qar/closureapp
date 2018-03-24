@@ -8,7 +8,7 @@ class PlayQueue extends React.Component {
 
   renderListItem(obj, i) {
     return (
-      <tr className={ (obj.path === this.props.currentSound ? styles.active: "") }
+      <tr className={ (obj.path === this.props.currentSound ? styles.active : '') }
           onDoubleClick={ () => this.props.play(obj.path) }
           key={ i }>
         <td> {obj.title} </td>
