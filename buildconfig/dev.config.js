@@ -14,7 +14,8 @@ module.exports = {
     alias: {
       components: path.resolve(__dirname, '../components'),
       styles: path.resolve(__dirname, '../styles'),
-      assets: path.resolve(__dirname, '../assets')
+      assets: path.resolve(__dirname, '../assets'),
+      utils: path.resolve(__dirname, '../utils')
     }
   },
 
@@ -45,7 +46,7 @@ module.exports = {
       },
 
       {
-        test: /\.woff($|\?)|\.woff2($|\?)|\.ttf($|\?)|\.eot($|\?)|\.svg($|\?)|\.jpg($|\?)/,
+        test: /\.woff($|\?)|\.woff2($|\?)|\.ttf($|\?)|\.eot($|\?)|\.svg($|\?)|\.jpg($|\?)|\.png($|\?)/,
         loader: 'url-loader'
       },
 

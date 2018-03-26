@@ -6,10 +6,15 @@ import PlayDuration from 'components/Player/PlayDuration';
 import PlayModeControl from 'components/Player/PlayModeControl';
 import PlayVolumeControl from 'components/Player/PlayVolumeControl';
 import AccountSettings from 'components/account-settings';
+import MediaInfo from 'components/App/MediaInfo';
 import events from '../src/events';
 import path from 'path';
+import fs from 'fs';
 import { remote, ipcRenderer } from 'electron';
 import playerStyles from 'components/Player/Player.scss';
+import regionStyles from './region.scss';
+import jsmediatags from 'jsmediatags';
+import getCoverFromMP3File from 'utils/getCoverFromMP3File';
 
 const soundsDb = remote.getGlobal('soundsDb');
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
@@ -26,6 +31,8 @@ class App extends React.Component {
       isListRepeat: true,
       volume: 40,
       showSettings: false,
+      currentSongId: '',
+      correntSongCover: '',
     };
 
     this.playerSetup();
@@ -148,15 +155,16 @@ class App extends React.Component {
           passTime: 0,
           totalTime: 0,
           width: '0%',
-          isPlaying: false
+          isPlaying: false,
+          currentSongId: '',
+          currentSongCover: ''
         });
       },
     };
   }
 
   _playCount() {
-    const id = path.parse(this.currentSong.url).name;
-    soundsDb.findOne({ _id: id }, (err, sound) => {
+    soundsDb.findOne({ _id: this.state.currentSongId }, (err, sound) => {
       if (err) {
         // handle error
         return
@@ -184,20 +192,22 @@ class App extends React.Component {
     });
   }
 
-  prepareSong(path) {
+  prepareSong(url) {
     const globalState = this.state;
     const _this = this;
 
-    const nextSoundPath = this._findNextSound(path).path;
+    const nextSoundPath = this._findNextSound(url).path;
 
     const opts = Object.assign({}, this._createSoundOpts(),  {
-      url: path,
+      url,
       onfinish: () => {
         this.setState({
           width: '0%',
           isPlaying: false,
           passTime: 0,
           totalTime: 0,
+          currentSongId: '',
+          currentSongCover: ''
         });
 
         this._playCount();
@@ -208,6 +218,11 @@ class App extends React.Component {
           this.prepareSong(nextSoundPath).play();
         }
       }
+    });
+
+    getCoverFromMP3File(url, cover => {
+      const id = path.parse(url).name;
+      this.setState({ currentSongId: id, currentSongCover: cover });
     });
 
     this.currentSong = soundManager.createSound(opts);
@@ -289,6 +304,9 @@ class App extends React.Component {
     return (
       <div>
         <div className={ playerStyles.app_title_bar }>
+          <div className={ regionStyles.top_region }>
+            <MediaInfo media={ this.state.currentSongId } cover={ this.state.currentSongCover } />
+          </div>
           <div className={ playerStyles.controls_bar }>
             <div className={ playerStyles.play_control_bar }>
               <PlayControl onPlayBtnClicked={ () => this.play() }

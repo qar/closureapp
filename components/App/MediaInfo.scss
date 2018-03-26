@@ -1,0 +1,19 @@
+.container {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+
+    .cover_img {
+        overflow: hidden;
+        width: 110px;
+        height: 110px;
+        margin-right: 40px;
+        border-radius: 2px;
+    }
+
+    .media_info {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+    }
+}
