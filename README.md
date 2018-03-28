@@ -6,9 +6,13 @@ A tool made out of a fantasy of free will.
 
 first, you need to get webpack running by `yarn start`, and then run `yarn run electron`
 
+## Develop
+
+When adding a dependency, if it will be used in main process, use `yarn add <PACKAGE>`, otherwise use `yarn add <PACKAGE> -D` to add it to devDependencies.
+
 ## Distribution
 
-Use [electron-packager](https://www.npmjs.com/package/electron-packager) to package this app.
+This project use [electron-packager](https://www.npmjs.com/package/electron-packager) to package this app.  Run `yarn run package`.
 
 ## This project CAN NOT be done without
 
