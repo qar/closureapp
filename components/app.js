@@ -176,14 +176,14 @@ class App extends React.Component {
 
       sound.playCount += 1;
 
-      soundsDb.update({ _id: id }, { $set: { playCount: sound.playCount }}, (err, sound) => {
+      soundsDb.update({ _id: this.state.currentSongId }, { $set: { playCount: sound.playCount }}, (err, sound) => {
         if (err) {
           // handle error
         }
       });
 
       this.state.queue.forEach(i => {
-        if (i._id === id) {
+        if (i._id === this.state.currentSongId) {
           i.playCount = sound.playCount;
         }
       });
@@ -206,8 +206,6 @@ class App extends React.Component {
           isPlaying: false,
           passTime: 0,
           totalTime: 0,
-          currentSongId: '',
-          currentSongCover: ''
         });
 
         this._playCount();
