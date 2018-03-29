@@ -8,6 +8,7 @@ import { ipcRenderer, remote } from 'electron';
 import App from 'components/app';
 import events from './events';
 const soundsDb = remote.getGlobal('soundsDb');
+const MODE = remote.getGlobal('MODE');
 
 const soundManager = window.soundManager;
 
@@ -28,7 +29,6 @@ function setMainMenu() {
       submenu: [
         {role: 'reload'},
         {role: 'forcereload'},
-        {role: 'toggledevtools'},
         {type: 'separator'},
         {role: 'resetzoom'},
         {role: 'zoomin'},
@@ -37,6 +37,7 @@ function setMainMenu() {
         {role: 'togglefullscreen'}
       ]
     },
+
     {
       role: 'window',
       submenu: [
@@ -44,6 +45,7 @@ function setMainMenu() {
         {role: 'close'}
       ]
     },
+
     {
       role: 'help',
       submenu: [
@@ -54,6 +56,10 @@ function setMainMenu() {
       ]
     }
   ]
+
+  if (MODE === 'development') {
+    template[1].submenu.splice(2, 0, {role: 'toggledevtools'});
+  }
 
   if (process.platform === 'darwin') {
     template.unshift({

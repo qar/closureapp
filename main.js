@@ -11,11 +11,18 @@ ipcMain.on('addFileToLibrary', openFileDialog);
 const SOUNDS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'sounds.db');
 const SETTINGS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'settings.db');
 const MEDIA_DIR = path.resolve(app.getPath('home'), 'my_music_repo');
+let  MODE;
+try {
+  MODE = fs.readFileSync('./.MODE', 'utf-8').replace(/\s/, '');
+} catch(e) {
+  MODE = 'development';
+}
 
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR)
 
 global.soundsDb = new Datastore({ filename: SOUNDS_DB_DIR, autoload: true });
 global.settingsDb = new Datastore({ filename: SETTINGS_DB_DIR, autoload: true });
+global.MODE = MODE;
 
 let willQuit = false;
 
@@ -29,6 +36,8 @@ function createWindow () {
 
   // 然后加载应用的 index.html。
   win.loadURL(`file://${__dirname}/index.html`);
+
+  win.openDevTools();
 
   win.on('close', (ev) => {
     if (!willQuit) {

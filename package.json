@@ -12,16 +12,17 @@
   "scripts": {
     "electron": "electron .",
     "start": "webpack-cli --watch --config buildconfig/dev.config.js",
-    "build": "react-scripts build",
+    "build": "webpack-cli --config buildconfig/prod.config.js",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject",
-    "package": "node packager.js"
+    "package": "yarn run build && node packager.js"
   },
   "devDependencies": {
     "babel-core": "^6.26.0",
     "babel-loader": "^7.1.3",
     "babel-preset-es2015": "^6.24.1",
     "babel-preset-react": "^6.24.1",
+    "cross-env": "^5.1.4",
     "css-loader": "^0.28.10",
     "electron": "^1.8.4",
     "electron-packager": "^11.2.0",
