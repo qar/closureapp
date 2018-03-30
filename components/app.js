@@ -15,6 +15,7 @@ import playerStyles from 'components/Player/Player.scss';
 import regionStyles from './region.scss';
 import jsmediatags from 'jsmediatags';
 import getCoverFromMP3File from 'utils/getCoverFromMP3File';
+import 'styles/scrollbar.scss';
 
 const soundsDb = remote.getGlobal('soundsDb');
 const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
@@ -301,41 +302,46 @@ class App extends React.Component {
   render() {
     return (
       <div>
-        <div className={ playerStyles.app_title_bar }>
-          <div className={ regionStyles.top_region }>
-            <MediaInfo media={ this.state.currentSongId } cover={ this.state.currentSongCover } />
+        <div className={ regionStyles.header_zone }>
+          <div className={ regionStyles.brand_box }>
+            <span>Music Archive</span>
           </div>
-          <div className={ playerStyles.controls_bar }>
-            <div className={ playerStyles.play_control_bar }>
-              <PlayControl onPlayBtnClicked={ () => this.play() }
-                           onPauseBtnClicked={ () => this.pause() }
-                           onPrevBtnClicked={ () => this.prev() }
-                           onNextBtnClicked={ () => this.next() }
-                           onStopBtnClicked={ () => this.stop() }
-                           isPlaying={ this.state.isPlaying } />
-            </div>
+          <div className={ regionStyles.view_box }></div>
+          <div className={ regionStyles.search_box }></div>
+        </div>
 
-            <div className={ playerStyles.play_mode_bar }>
-              <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
-            </div>
+        <div className={ regionStyles.play_zone }>
+          <div className={ regionStyles.media_info }>
+            <div></div>
+            <MediaInfo media={ this.state.currentSongId } cover={ this.state.currentSongCover } />
+            <div></div>
+          </div>
 
-            <div className={ playerStyles.play_progress_bar }>
+          <div className={ regionStyles.controls_bar }>
+            <PlayControl onPlayBtnClicked={ () => this.play() }
+                         onPauseBtnClicked={ () => this.pause() }
+                         onPrevBtnClicked={ () => this.prev() }
+                         onNextBtnClicked={ () => this.next() }
+                         onStopBtnClicked={ () => this.stop() }
+                         isPlaying={ this.state.isPlaying } />
+
+            <div className={ regionStyles.play_progress_bar }>
               <PlayProgressBar barProgress={this.state.width} setPos={ this.setPos.bind(this) } />
             </div>
 
-            <div className={ playerStyles.play_duration_bar }>
-              <PlayDuration passTime={ this.state.passTime } totalTime={ this.state.totalTime } />
-            </div>
-            <div className={ playerStyles.play_volume_bar }>
+            <div className={ regionStyles.volume_mode_control }>
               <PlayVolumeControl volume={ this.state.volume } setVolume={ this.setVolume.bind(this) } />
+              <PlayModeControl isListRepeat={ this.state.isListRepeat } onListRepeatClicked={ this.repeatItem.bind(this) } onItemRepeatClicked={ this.repeatList.bind(this) } />
             </div>
           </div>
         </div>
 
-        <div className={ playerStyles.app_body }>
-          <div className="container-fluid">
+        <div className={ regionStyles.library_zone }>
+          <div className={ regionStyles.play_list_box }></div>
+          <div className={ regionStyles.media_box }>
             <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
           </div>
+          <div className={ regionStyles.activity_box }></div>
         </div>
       </div>
     );

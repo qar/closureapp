@@ -1,6 +1,5 @@
 import React from 'react';
 import styles from 'components/App/MediaInfo.scss';
-import defaultCover from 'assets/default-cover.png';
 import { remote } from 'electron';
 import path from 'path';
 const soundsDb = remote.getGlobal('soundsDb');
@@ -9,7 +8,7 @@ class MediaInfo extends React.Component {
   constructor(props) {
     super(props);
 
-    this.state = { media: {}, id: this.props.media, cover: '' };
+    this.state = { media: {}, id: this.props.media };
   }
 
   componentWillReceiveProps(nextProps) {
@@ -23,7 +22,7 @@ class MediaInfo extends React.Component {
 
       if (!sound) return;
 
-      this.setState({ media: sound, id: nextProps.media, cover: nextProps.cover });
+      this.setState({ media: sound, id: nextProps.media });
     });
 
   }
@@ -31,10 +30,9 @@ class MediaInfo extends React.Component {
   render() {
     return (
       <div className={ styles.container }>
-        <img src={ this.state.cover || defaultCover } className={ styles.cover_img } />
         <ul className={ styles.media_info }>
-            <li className={ styles.artist }>{ this.state.media.artist }</li>
-            <li className={ styles.album_name }>{ this.state.media.album }</li>
+            <li className={ styles.media_name }>{ this.state.media.artist }</li>
+            <li className={ styles.artist }>{ this.state.media.artist } / { this.state.media.album }</li>
         </ul>
       </div>
     );

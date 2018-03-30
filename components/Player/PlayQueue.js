@@ -1,5 +1,6 @@
 import React from 'react';
 import styles from './PlayQueue.scss';
+import defaultCover from 'assets/default-cover.png';
 
 class PlayQueue extends React.Component {
   constructor(props) {
@@ -7,34 +8,22 @@ class PlayQueue extends React.Component {
   }
 
   renderListItem(obj, i) {
+    const itemClass = `${(obj.path === this.props.currentSound ? styles.active : '')} ${styles.row}`;
     return (
-      <tr className={ (obj.path === this.props.currentSound ? styles.active : '') }
-          onDoubleClick={ () => this.props.play(obj.path) }
-          key={ i }>
-        <td> {obj.title} </td>
-        <td> {obj.artist} </td>
-        <td> {obj.album} </td>
-        <td> {obj.playCount || 0} </td>
-      </tr>
+      <ul className={ itemClass } onDoubleClick={ () => this.props.play(obj.path) } key={ i }>
+        <li className={ styles.media_cover }><img src={ defaultCover } /></li>
+        <li className={ styles.media_detail }>
+          <span>{obj.title} </span>
+          <span>{obj.artist} / {obj.album}</span>
+        </li>
+      </ul>
     );
   }
 
   render() {
     return (
-      <div className={ `${styles.queue} row table-responsive` }>
-        <table className={ styles.table }>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Artist</th>
-              <th>Album</th>
-              <th>Plays</th>
-            </tr>
-          </thead>
-          <tbody>
-          { this.props.queue.map((obj, i) => this.renderListItem(obj, i)) }
-          </tbody>
-        </table>
+      <div className={ styles.queue }>
+        { this.props.queue.map((obj, i) => this.renderListItem(obj, i)) }
       </div>
     );
   }

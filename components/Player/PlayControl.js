@@ -30,7 +30,6 @@ class PlayControl extends React.Component {
         {this.renderPlayBtn(this.props.isPlaying)}
 
         <li className={ styles.control_btn } onClick={() => this.props.onNextBtnClicked()}><span className={ `${iconStyles.icon} ${iconStyles.icon_next}` }></span></li>
-        <li className={ styles.control_btn } onClick={() => this.props.onStopBtnClicked()}><span className={ `${iconStyles.icon} ${iconStyles.icon_stop}` }></span></li>
       </ul>
     );
   }

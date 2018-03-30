@@ -17,7 +17,7 @@ class PlayVolumeControl extends React.Component {
 
   render() {
     return (
-      <div className={ `${playerStyles.progress_bar_container} ${playerStyles.core_ctrl_panel}` }>
+      <div className={ playerStyles.progress_bar_container }>
         <span className={ `${iconStyles.icon} ${iconStyles.icon_volume}` }></span> &nbsp;&nbsp;
         <div className={ `${playerStyles.progress} ${playerStyles.player_progress}` } ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
           <div className={ playerStyles.progress_bar }

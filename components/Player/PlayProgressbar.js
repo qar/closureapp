@@ -17,7 +17,7 @@ class PlayProgressBar extends React.Component {
 
   render() {
     return (
-      <div className={ `${playerStyles.progress_bar_container} ${playerStyles.core_ctrl_panel}` }>
+      <div className={ playerStyles.progress_bar_container }>
         <div className={ `${playerStyles.progress } ${playerStyles.player_progress}` } ref={ ele => this.progressBar = ele } onClick={ (e) => this.setPos(e) }>
           <div className={ playerStyles.progress_bar } role="progressbar" style={{ width: this.props.barProgress }}> </div>
         </div>
