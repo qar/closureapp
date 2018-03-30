@@ -2,6 +2,8 @@
 
 A tool made out of a fantasy of free will.
 
+![Art work](artworks/art-work.jpeg)
+
 ## Run in Electron
 
 first, you need to get webpack running by `yarn start`, and then run `yarn run electron`
