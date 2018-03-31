@@ -4,6 +4,7 @@
   "private": true,
   "main": "main.js",
   "dependencies": {
+    "abab": "^1.0.4",
     "jsmediatags": "^3.8.1",
     "md5-file": "^3.2.3",
     "nedb": "^1.8.0",

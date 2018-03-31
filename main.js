@@ -5,12 +5,15 @@ const fs = require('fs');
 const jsmediatags = require('jsmediatags');
 const md5File = require('md5-file');
 const Datastore = require('nedb');
+const btoa = require('abab').btoa;
 
 ipcMain.on('addFileToLibrary', openFileDialog);
 
 const SOUNDS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'sounds.db');
 const SETTINGS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'settings.db');
 const MEDIA_DIR = path.resolve(app.getPath('home'), 'my_music_repo');
+const COVERS_DIR = path.resolve(app.getPath('home'), 'my_music_repo', 'covers');
+
 let  MODE;
 try {
   MODE = fs.readFileSync('./.MODE', 'utf-8').replace(/\s/, '');
@@ -18,11 +21,14 @@ try {
   MODE = 'development';
 }
 
-if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR)
+if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR);
+if (!fs.existsSync(COVERS_DIR)) fs.mkdirSync(COVERS_DIR);
 
 global.soundsDb = new Datastore({ filename: SOUNDS_DB_DIR, autoload: true });
 global.settingsDb = new Datastore({ filename: SETTINGS_DB_DIR, autoload: true });
 global.MODE = MODE;
+global.COVERS_DIR = COVERS_DIR;
+global.MEDIA_DIR = MEDIA_DIR;
 
 let willQuit = false;
 
@@ -36,8 +42,6 @@ function createWindow () {
 
   // 然后加载应用的 index.html。
   win.loadURL(`file://${__dirname}/index.html`);
-
-  win.openDevTools();
 
   win.on('close', (ev) => {
     if (!willQuit) {
@@ -104,7 +108,7 @@ function openFileDialog() {
     filepaths.forEach(f => {
       const hash = md5File.sync(f);
       const name = path.basename(f);
-      const dest = path.resolve(app.getPath('home'), 'my_music_repo', [hash, path.extname(f)].join(''));
+      const dest = path.resolve(MEDIA_DIR, [hash, path.extname(f)].join(''));
       fs.createReadStream(f).pipe(fs.createWriteStream(dest));
       jsmediatags.read(f, {
         onSuccess: tag => {
@@ -117,6 +121,21 @@ function openFileDialog() {
             title: tag.tags.title,
             track: tag.tags.track,
           };
+
+          const image = tag.tags.picture;
+          if (image) {
+            let base64String = '';
+            for (let i = 0; i < image.data.length; i++) {
+                base64String += String.fromCharCode(image.data[i]);
+            }
+            const ftype = image.format.split('/')[1];
+            const coverName = `${item.artist}-${item.album}.${ftype}`;
+            const coverPath = path.resolve(COVERS_DIR, coverName);
+            fs.writeFileSync(coverPath, btoa(base64String), 'base64');
+            item.cover = coverPath;
+          } else {
+            item.cover = '';
+          }
 
           soundsDb.findOne({ _id: hash }, function(err, result) {
             if (!err && !result) { // noexist

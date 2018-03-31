@@ -1,4 +1,5 @@
 const jsmediatags = require('jsmediatags');
+const btoa = require('abab').btoa;
 
 export default function getCoverFromMP3File(filePath, callback) {
   jsmediatags.read(filePath, {
@@ -9,7 +10,7 @@ export default function getCoverFromMP3File(filePath, callback) {
         for (let i = 0; i < image.data.length; i++) {
             base64String += String.fromCharCode(image.data[i]);
         }
-        const base64 = 'data:' + image.format + ';base64,' + window.btoa(base64String);
+        const base64 = 'data:' + image.format + ';base64,' + btoa(base64String);
         callback(base64);
       }
     },

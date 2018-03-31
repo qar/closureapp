@@ -5,6 +5,7 @@ import PlayProgressBar from 'components/Player/PlayProgressbar';
 import PlayDuration from 'components/Player/PlayDuration';
 import PlayModeControl from 'components/Player/PlayModeControl';
 import PlayVolumeControl from 'components/Player/PlayVolumeControl';
+import GenresMenu from 'components/App/GenresMenu';
 import AccountSettings from 'components/account-settings';
 import MediaInfo from 'components/App/MediaInfo';
 import events from '../src/events';
@@ -18,7 +19,8 @@ import getCoverFromMP3File from 'utils/getCoverFromMP3File';
 import 'styles/scrollbar.scss';
 
 const soundsDb = remote.getGlobal('soundsDb');
-const MEDIA_DIR = path.resolve(remote.app.getPath('home'), 'my_music_repo');
+const MEDIA_DIR = remote.getGlobal('MEDIA_DIR');
+const COVERS_DIR = remote.getGlobal('COVERS_DIR');
 
 class App extends React.Component {
   constructor(props) {
@@ -51,6 +53,21 @@ class App extends React.Component {
 
       items.forEach(item => {
         item.path = path.resolve(MEDIA_DIR, [item._id, item.fileExt].join(''))
+
+        if (!item.cover) {
+          getCoverFromMP3File(item.path, cover => {
+            // save file to disk
+            const matches = cover.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
+            const coverName = `${item.artist}-${item.album}.${matches[1]}`;
+            const coverPath = path.resolve(COVERS_DIR, coverName);
+            fs.writeFile(coverPath, matches[2], 'base64', function(err) {
+              console.log(err);
+              soundsDb.update({ _id: item._id }, { $set: { cover: coverPath }}, function(err, result) {
+                // TODO handle err
+              });
+            });
+          });
+        }
       });
 
       this.setState({ queue: items });
@@ -337,7 +354,10 @@ class App extends React.Component {
         </div>
 
         <div className={ regionStyles.library_zone }>
-          <div className={ regionStyles.play_list_box }></div>
+          <div className={ regionStyles.play_list_box }>
+            <GenresMenu />
+          </div>
+
           <div className={ regionStyles.media_box }>
             <PlayQueue play={ (path) => this.playItem(path) } queue={ this.state.queue } currentSound={ this.currentSong ? this.currentSong.url : '' } />
           </div>

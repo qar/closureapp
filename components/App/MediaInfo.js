@@ -31,8 +31,8 @@ class MediaInfo extends React.Component {
     return (
       <div className={ styles.container }>
         <ul className={ styles.media_info }>
-            <li className={ styles.media_name }>{ this.state.media.artist }</li>
-            <li className={ styles.artist }>{ this.state.media.artist } / { this.state.media.album }</li>
+            <li className={ styles.media_name }>{ this.state.media.title }</li>
+            <li className={ styles.artist }>{ this.state.media.artist }</li>
         </ul>
       </div>
     );

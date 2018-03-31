@@ -11,9 +11,9 @@ class PlayQueue extends React.Component {
     const itemClass = `${(obj.path === this.props.currentSound ? styles.active : '')} ${styles.row}`;
     return (
       <ul className={ itemClass } onDoubleClick={ () => this.props.play(obj.path) } key={ i }>
-        <li className={ styles.media_cover }><img src={ defaultCover } /></li>
+        <li className={ styles.media_cover }><img src={ obj.cover || defaultCover } /></li>
         <li className={ styles.media_detail }>
-          <span>{obj.title} </span>
+          <span>{obj.title } </span>
           <span>{obj.artist} / {obj.album}</span>
         </li>
       </ul>
