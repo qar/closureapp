@@ -3,12 +3,12 @@
     display: flex;
     margin: 0;
     padding-left: 0;
+    justify-content: center;
     list-style: none;
 
     .control_btn {
         display: flex;
-        flex: 1;
-        min-width: 36px;
+        min-width: 60px;
         align-items: center;
         justify-content: center;
         color: rgba(255, 255, 255, 0.7);
