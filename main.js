@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain }  = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, globalShortcut }  = require('electron');
 const path = require('path');
 const url = require('url');
 const fs = require('fs');
@@ -6,6 +6,8 @@ const jsmediatags = require('jsmediatags');
 const md5File = require('md5-file');
 const Datastore = require('nedb');
 const btoa = require('abab').btoa;
+
+const events = require('./src/events');
 
 ipcMain.on('addFileToLibrary', openFileDialog);
 
@@ -29,6 +31,7 @@ global.settingsDb = new Datastore({ filename: SETTINGS_DB_DIR, autoload: true })
 global.MODE = MODE;
 global.COVERS_DIR = COVERS_DIR;
 global.MEDIA_DIR = MEDIA_DIR;
+global.events = events
 
 let willQuit = false;
 
@@ -42,6 +45,21 @@ function createWindow () {
 
   // 然后加载应用的 index.html。
   win.loadURL(`file://${__dirname}/index.html`);
+
+  // 绑定 播放/暂停 快捷键
+  globalShortcut.register('MediaPlayPause', () => {
+    events.emit('play:toggle')
+  });
+
+  // 绑定 下一首 快捷键
+  globalShortcut.register('MediaNextTrack', () => {
+    events.emit('play:next')
+  });
+
+  // 绑定 上一首 快捷键
+  globalShortcut.register('MediaPreviousTrack', () => {
+    events.emit('play:previous')
+  });
 
   win.on('close', (ev) => {
     if (!willQuit) {
@@ -160,6 +178,3 @@ function openFileDialog() {
     });
   });
 }
-
-
-

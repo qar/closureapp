@@ -8,7 +8,6 @@ import PlayVolumeControl from 'components/Player/PlayVolumeControl';
 import GenresMenu from 'components/App/GenresMenu';
 import AccountSettings from 'components/account-settings';
 import MediaInfo from 'components/App/MediaInfo';
-import events from '../src/events';
 import path from 'path';
 import fs from 'fs';
 import { remote, ipcRenderer } from 'electron';
@@ -21,6 +20,7 @@ import 'styles/scrollbar.scss';
 const soundsDb = remote.getGlobal('soundsDb');
 const MEDIA_DIR = remote.getGlobal('MEDIA_DIR');
 const COVERS_DIR = remote.getGlobal('COVERS_DIR');
+const events = remote.getGlobal('events');
 
 class App extends React.Component {
   constructor(props) {
@@ -43,6 +43,22 @@ class App extends React.Component {
 
     events.on('goto:settings', () => {
       this.setState({ showSettings: true });
+    });
+
+    events.on('play:toggle', () => {
+      if (this.state.isPlaying) {
+        this.pause();
+      } else {
+        this.play();
+      }
+    });
+
+    events.on('play:previous', () => {
+      this.prev();
+    })
+
+    events.on('play:next', () => {
+      this.next();
     });
 
     soundsDb.find({}, (err, items) => {

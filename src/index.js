@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { ipcRenderer, remote } from 'electron';
 import App from 'components/app';
-import events from './events';
+const events =  remote.getGlobal('events');
 const soundsDb = remote.getGlobal('soundsDb');
 const MODE = remote.getGlobal('MODE');
 
