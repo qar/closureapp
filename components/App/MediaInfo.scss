@@ -1,7 +1,22 @@
 .container {
+    position: relative;
+    overflow: hidden;
     display: flex;
     flex-direction: row;
-    justify-content: flex-start;
+    justify-content: center;
+    grid-column: 1/4;
+
+    .cover_bg {
+        position: absolute;
+        display: flex;
+        height: 100%;
+        width: 100%;
+        background-size: cover;
+        background-position: center;
+        filter: blur(2px);
+        transform: scale(1.1);
+        z-index: -1;
+    }
 
     .media_info {
         align-self: center;
@@ -11,9 +26,18 @@
         font-size: 16px;
         color: white;
         font-weight: 200;
-        
+        z-index: 1;
+
+        li {
+            display: inline-block;
+        }
+
         .media_name {
           font-size: 40px;
+        }
+
+        .artist {
+            margin-left: 15px;
         }
     }
 }

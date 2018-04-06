@@ -30,6 +30,7 @@ class MediaInfo extends React.Component {
   render() {
     return (
       <div className={ styles.container }>
+        <div className={ styles.cover_bg } style={{ backgroundImage: "url("+ this.props.cover +")" }}></div>
         <ul className={ styles.media_info }>
             <li className={ styles.media_name }>{ this.state.media.title }</li>
             <li className={ styles.artist }>{ this.state.media.artist }</li>

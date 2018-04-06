@@ -329,9 +329,7 @@ class App extends React.Component {
 
         <div className={ regionStyles.play_zone }>
           <div className={ regionStyles.media_info }>
-            <div></div>
             <MediaInfo media={ this.state.currentSongId } cover={ this.state.currentSongCover } />
-            <div></div>
           </div>
 
           <div className={ regionStyles.controls_bar }>
