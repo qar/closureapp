@@ -16,6 +16,10 @@ When adding a dependency, if it will be used in main process, use `yarn add <PAC
 
 This project use [electron-packager](https://www.npmjs.com/package/electron-packager) to package this app.  Run `yarn run package`.
 
+## Docs 
+
+See [docs](./docs)
+
 ## This project CAN NOT be done without
 
 - [SoundManager2](http://www.schillmania.com/projects/soundmanager2/)

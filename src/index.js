@@ -7,10 +7,11 @@ import fs from 'fs';
 import { ipcRenderer, remote } from 'electron';
 import App from 'components/app';
 const events =  remote.getGlobal('events');
-const soundsDb = remote.getGlobal('soundsDb');
+const playlistsDb = remote.getGlobal('playlistsDb');
 const MODE = remote.getGlobal('MODE');
 
 const soundManager = window.soundManager;
+let rightClickPosition = null;
 
 function setMainMenu() {
   const template = [
@@ -97,6 +98,44 @@ function setMainMenu() {
   const menu = remote.Menu.buildFromTemplate(template)
   remote.Menu.setApplicationMenu(menu)
 }
+
+function popupContextMenu(ev) {
+  const playlistMenus = [];
+
+  playlistsDb.find({}, (err, results) => {
+  });
+
+  const template = [
+    {
+      label: 'Play',
+      click: () => { events.emit('play:current') }
+    },
+
+    {
+      label: 'Stop',
+      click: () => { events.emit('play:stop') }
+    },
+
+    {
+      label: 'Add to Playlist',
+      submenu: [
+        {
+          label: 'New Playlist',
+          click: () => { events.emit('playlist:new') }
+        }
+      ]
+    }
+  ];
+
+  const menu = remote.Menu.buildFromTemplate(template)
+  rightClickPosition = {x: ev.x, y: ev.y}
+  menu.popup(remote.getCurrentWindow())
+}
+
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault()
+  popupContextMenu(e);
+}, false)
 
 setMainMenu();
 

@@ -13,6 +13,7 @@ ipcMain.on('addFileToLibrary', openFileDialog);
 
 const SOUNDS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'sounds.db');
 const SETTINGS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'settings.db');
+const PLAYLISTS_DB_DIR = path.resolve(app.getPath('userData'), 'app_data', 'playlists.db');
 const MEDIA_DIR = path.resolve(app.getPath('home'), 'my_music_repo');
 const COVERS_DIR = path.resolve(app.getPath('home'), 'my_music_repo', 'covers');
 
@@ -28,6 +29,7 @@ if (!fs.existsSync(COVERS_DIR)) fs.mkdirSync(COVERS_DIR);
 
 global.soundsDb = new Datastore({ filename: SOUNDS_DB_DIR, autoload: true });
 global.settingsDb = new Datastore({ filename: SETTINGS_DB_DIR, autoload: true });
+global.playlistsDb = new Datastore({ filename: PLAYLISTS_DB_DIR, autoload: true });
 global.MODE = MODE;
 global.COVERS_DIR = COVERS_DIR;
 global.MEDIA_DIR = MEDIA_DIR;
