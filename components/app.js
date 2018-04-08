@@ -35,7 +35,7 @@ class App extends React.Component {
       volume: 40,
       showSettings: false,
       currentSongId: '',
-      correntSongCover: '',
+      currentSongCover: '',
     };
 
     this.playerSetup();
