@@ -18,8 +18,7 @@
     "pack": "webpack-cli --config buildconfig/prod.config.js",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject",
-    "package": "yarn run pack && node packager.js",
-    "dist": "electron-builder"
+    "dist": "npm run pack && electron-builder"
   },
   "devDependencies": {
     "babel-core": "^6.26.0",
@@ -30,7 +29,6 @@
     "css-loader": "^0.28.10",
     "electron": "^1.8.4",
     "electron-builder": "^20.10.0",
-    "electron-packager": "^11.2.0",
     "node-sass": "^4.8.3",
     "react": "^16.2.0",
     "react-dom": "^16.2.0",
