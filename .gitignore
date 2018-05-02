@@ -24,3 +24,4 @@ yarn-error.log*
 *.swo
 data
 dist
+bundle
