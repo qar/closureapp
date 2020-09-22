@@ -41,7 +41,15 @@ let win
 
 function createWindow () {
   // 创建浏览器窗口。
-  win = new BrowserWindow({width: 1300, height: 800, frame: false })
+  win = new BrowserWindow({
+    width: 1300,
+    height: 800,
+    frame: false,
+    webPreferences: {
+      nodeIntegration: true,
+      enableRemoteModule: true,
+    }
+  })
 
   // 然后加载应用的 index.html。
   win.loadURL(`file://${__dirname}/index.html`);
