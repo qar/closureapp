@@ -1,9 +1,10 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "audio/GaplessPlaylistSource.h"
 #include <functional>
 
-/** Owns device + transport. Deep module: open a file, play/pause/seek, query state. */
+/** Owns device, playlist and transport. The UI never touches audio sources. */
 class AudioEngine : private juce::ChangeListener
 {
 public:
@@ -15,6 +16,9 @@ public:
         double lengthSeconds = 0.0;
         juce::String fileName;
         juce::String filePath;
+        int currentTrackIndex = -1;
+        bool loopPlaylist = true;
+        juce::StringArray playlistNames;
     };
 
     using StateCallback = std::function<void(const State&)>;
@@ -22,7 +26,11 @@ public:
     AudioEngine();
     ~AudioEngine() override;
 
-    bool openFile(const juce::File& file);
+    int addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty = true);
+    bool removeTrack(int index);
+    void clearPlaylist();
+    void playTrack(int index);
+    void setLoopPlaylist(bool shouldLoop);
     void play();
     void pause();
     void stop();
@@ -41,12 +49,11 @@ private:
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioFormatManager formatManager;
-    std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
+    juce::TimeSliceThread readAheadThread;
+    GaplessPlaylistSource playlistSource;
     juce::AudioTransportSource transportSource;
     juce::AudioSourcePlayer sourcePlayer;
 
-    juce::String currentFileName;
-    juce::String currentFilePath;
     StateCallback stateCallback;
 
     class PositionTimer;

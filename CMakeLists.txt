@@ -26,6 +26,8 @@ target_sources(ClosureApp
         src/MainComponent.cpp
         src/audio/AudioEngine.h
         src/audio/AudioEngine.cpp
+        src/audio/GaplessPlaylistSource.h
+        src/audio/GaplessPlaylistSource.cpp
         src/ui/GlassLookAndFeel.h
         src/ui/GlassLookAndFeel.cpp
         src/ui/PlayerPanel.h
@@ -68,4 +70,47 @@ if(APPLE)
         "-framework AppKit"
         "-framework QuartzCore"
     )
+endif()
+
+option(CLOSURE_BUILD_TESTS "Build Closure audio tests" OFF)
+
+if(CLOSURE_BUILD_TESTS)
+    enable_testing()
+
+    juce_add_console_app(ClosureAudioTests
+        PRODUCT_NAME "Closure Audio Tests"
+        NEEDS_WEB_BROWSER FALSE
+        NEEDS_CURL FALSE
+    )
+
+    juce_generate_juce_header(ClosureAudioTests)
+
+    target_sources(ClosureAudioTests
+        PRIVATE
+            tests/GaplessPlaylistSourceTests.cpp
+            src/audio/GaplessPlaylistSource.h
+            src/audio/GaplessPlaylistSource.cpp
+    )
+
+    target_include_directories(ClosureAudioTests PRIVATE src)
+
+    target_compile_definitions(ClosureAudioTests
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0
+            JUCE_USE_MP3AUDIOFORMAT=1
+    )
+
+    target_link_libraries(ClosureAudioTests
+        PRIVATE
+            juce::juce_audio_basics
+            juce::juce_audio_devices
+            juce::juce_audio_formats
+            juce::juce_core
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags
+    )
+
+    add_test(NAME ClosureAudioTests COMMAND ClosureAudioTests)
 endif()

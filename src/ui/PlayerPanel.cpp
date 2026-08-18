@@ -19,7 +19,23 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
 {
     setLookAndFeel(&glassLf);
 
-    titleLabel.setText("Drop a track, or Open", juce::dontSendNotification);
+    playlistLabel.setText("DEFAULT PLAYLIST", juce::dontSendNotification);
+    playlistLabel.setFont(juce::Font(juce::FontOptions(12.0f)).boldened());
+    playlistLabel.setColour(juce::Label::textColourId, GlassLookAndFeel::inkMuted());
+    addAndMakeVisible(playlistLabel);
+
+    playlistInfoLabel.setJustificationType(juce::Justification::centredRight);
+    playlistInfoLabel.setColour(juce::Label::textColourId, GlassLookAndFeel::inkMuted());
+    addAndMakeVisible(playlistInfoLabel);
+
+    playlistList.setModel(this);
+    playlistList.setRowHeight(34);
+    playlistList.setColour(juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+    playlistList.setColour(juce::ListBox::outlineColourId, GlassLookAndFeel::glassStroke());
+    playlistList.setOutlineThickness(1);
+    addAndMakeVisible(playlistList);
+
+    titleLabel.setText("Add a track to begin", juce::dontSendNotification);
     titleLabel.setJustificationType(juce::Justification::centred);
     titleLabel.setFont(juce::Font(juce::FontOptions(18.0f)));
     titleLabel.setColour(juce::Label::textColourId, GlassLookAndFeel::inkPrimary());
@@ -30,12 +46,14 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     timeLabel.setColour(juce::Label::textColourId, GlassLookAndFeel::inkMuted());
     addAndMakeVisible(timeLabel);
 
-    openButton.onClick = [this] { openFileChooser(); };
+    addButton.onClick = [this] { openFileChooser(); };
     playButton.onClick = [this] { audioEngine.togglePlayPause(); };
     stopButton.onClick = [this] { audioEngine.stop(); };
-    addAndMakeVisible(openButton);
+    loopButton.onClick = [this] { audioEngine.setLoopPlaylist(!currentState.loopPlaylist); };
+    addAndMakeVisible(addButton);
     addAndMakeVisible(playButton);
     addAndMakeVisible(stopButton);
+    addAndMakeVisible(loopButton);
 
     positionSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     positionSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -62,6 +80,7 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
 
 PlayerPanel::~PlayerPanel()
 {
+    playlistList.setModel(nullptr);
     setLookAndFeel(nullptr);
 }
 
@@ -85,38 +104,61 @@ void PlayerPanel::paint(juce::Graphics& g)
 
 void PlayerPanel::resized()
 {
-    auto area = getLocalBounds().reduced(40);
-    titleLabel.setBounds(area.removeFromTop(36));
-    area.removeFromTop(6);
+    auto area = getLocalBounds().reduced(36, 28);
+
+    auto playlistHeader = area.removeFromTop(28);
+    loopButton.setBounds(playlistHeader.removeFromRight(92).withSizeKeepingCentre(92, 28));
+    playlistInfoLabel.setBounds(playlistHeader.removeFromRight(82));
+    playlistLabel.setBounds(playlistHeader);
+
+    area.removeFromTop(8);
+    const auto listHeight = juce::jlimit(110, 220, area.getHeight() / 3);
+    playlistList.setBounds(area.removeFromTop(listHeight));
+    area.removeFromTop(14);
+
+    titleLabel.setBounds(area.removeFromTop(30));
+    area.removeFromTop(2);
     timeLabel.setBounds(area.removeFromTop(22));
-    area.removeFromTop(18);
+    area.removeFromTop(10);
 
-    positionSlider.setBounds(area.removeFromTop(28));
-    area.removeFromTop(16);
+    positionSlider.setBounds(area.removeFromTop(26));
+    area.removeFromTop(10);
 
-    auto controls = area.removeFromTop(40);
-    const int gap = 12;
-    const int btnW = 88;
-    auto row = controls.withSizeKeepingCentre(btnW * 3 + gap * 2, 36);
-    openButton.setBounds(row.removeFromLeft(btnW));
+    auto controls = area.removeFromTop(36);
+    const int gap = 8;
+    const int buttonWidth = juce::jmax(1, (controls.getWidth() - gap * 3) / 4);
+    auto row = controls.withSizeKeepingCentre(buttonWidth * 4 + gap * 3, 34);
+    addButton.setBounds(row.removeFromLeft(buttonWidth));
     row.removeFromLeft(gap);
-    playButton.setBounds(row.removeFromLeft(btnW));
+    playButton.setBounds(row.removeFromLeft(buttonWidth));
     row.removeFromLeft(gap);
-    stopButton.setBounds(row.removeFromLeft(btnW));
+    stopButton.setBounds(row.removeFromLeft(buttonWidth));
+    row.removeFromLeft(gap);
+    loopButton.setBounds(row.removeFromLeft(buttonWidth));
 
-    area.removeFromTop(20);
-    auto volRow = area.removeFromTop(28);
+    area.removeFromTop(12);
+    auto volRow = area.removeFromTop(24);
     volumeSlider.setBounds(volRow.withSizeKeepingCentre(juce::jmin(220, volRow.getWidth()), 24));
 }
 
 void PlayerPanel::applyState(const AudioEngine::State& state)
 {
+    currentState = state;
+
     if (state.hasFile)
         titleLabel.setText(state.fileName, juce::dontSendNotification);
     else
-        titleLabel.setText("Drop a track, or Open", juce::dontSendNotification);
+        titleLabel.setText("Add a track to begin", juce::dontSendNotification);
 
     playButton.setButtonText(state.isPlaying ? "Pause" : "Play");
+    loopButton.setButtonText(state.loopPlaylist ? "Loop On" : "Loop Off");
+    playlistInfoLabel.setText(juce::String(state.playlistNames.size()) + " tracks",
+                              juce::dontSendNotification);
+
+    playlistList.updateContent();
+    playlistList.deselectAllRows();
+    if (juce::isPositiveAndBelow(state.currentTrackIndex, state.playlistNames.size()))
+        playlistList.selectRow(state.currentTrackIndex, true);
 
     timeLabel.setText(formatTime(state.positionSeconds) + " / " + formatTime(state.lengthSeconds),
                       juce::dontSendNotification);
@@ -131,25 +173,62 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
 void PlayerPanel::openFileChooser()
 {
     auto chooser = std::make_shared<juce::FileChooser>(
-        "Open audio file",
+        "Add audio files",
         juce::File::getSpecialLocation(juce::File::userMusicDirectory),
         "*.mp3;*.flac;*.wav;*.aiff;*.aif;*.m4a;*.alac;*.ogg");
 
     const auto flags = juce::FileBrowserComponent::openMode
-                     | juce::FileBrowserComponent::canSelectFiles;
+                     | juce::FileBrowserComponent::canSelectFiles
+                     | juce::FileBrowserComponent::canSelectMultipleItems;
 
     chooser->launchAsync(flags, [this, chooser](const juce::FileChooser& fc)
     {
-        auto file = fc.getResult();
-        if (file == juce::File{})
+        const auto files = fc.getResults();
+        if (files.isEmpty())
             return;
 
-        if (audioEngine.openFile(file))
-            audioEngine.play();
+        audioEngine.addFiles(files);
     });
 }
 
 void PlayerPanel::seekFromSlider()
 {
     audioEngine.setPosition(positionSlider.getValue());
+}
+
+int PlayerPanel::getNumRows()
+{
+    return currentState.playlistNames.size();
+}
+
+void PlayerPanel::paintListBoxItem(int rowNumber,
+                                   juce::Graphics& g,
+                                   int width,
+                                   int height,
+                                   bool rowIsSelected)
+{
+    if (!juce::isPositiveAndBelow(rowNumber, currentState.playlistNames.size()))
+        return;
+
+    if (rowIsSelected)
+    {
+        g.setColour(GlassLookAndFeel::accent().withAlpha(0.18f));
+        g.fillRoundedRectangle(4.0f, 3.0f, static_cast<float>(width - 8), static_cast<float>(height - 6), 8.0f);
+    }
+
+    g.setColour(rowIsSelected ? GlassLookAndFeel::inkPrimary() : GlassLookAndFeel::inkMuted());
+    g.setFont(juce::Font(juce::FontOptions(13.0f)));
+    g.drawText(juce::String(rowNumber + 1).paddedLeft('0', 2)
+                   + "  " + currentState.playlistNames[rowNumber],
+               14,
+               0,
+               width - 28,
+               height,
+               juce::Justification::centredLeft,
+               true);
+}
+
+void PlayerPanel::listBoxItemClicked(int rowNumber, const juce::MouseEvent&)
+{
+    audioEngine.playTrack(rowNumber);
 }

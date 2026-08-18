@@ -3,21 +3,26 @@
 MainComponent::MainComponent()
     : playerPanel(audioEngine)
 {
-    setSize(720, 420);
+    setSize(820, 620);
     addAndMakeVisible(playerPanel);
 
-    audioEngine.setStateCallback([this](const AudioEngine::State& state)
+    const juce::Component::SafePointer<PlayerPanel> safePanel { &playerPanel };
+    audioEngine.setStateCallback([safePanel](const AudioEngine::State& state)
     {
-        juce::MessageManager::callAsync([this, state]
+        juce::MessageManager::callAsync([safePanel, state]
         {
-            playerPanel.applyState(state);
+            if (safePanel != nullptr)
+                safePanel->applyState(state);
         });
     });
 
     playerPanel.applyState(audioEngine.getState());
 }
 
-MainComponent::~MainComponent() = default;
+MainComponent::~MainComponent()
+{
+    audioEngine.setStateCallback(nullptr);
+}
 
 void MainComponent::paint(juce::Graphics& g)
 {
@@ -55,13 +60,15 @@ bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files)
 
 void MainComponent::filesDropped(const juce::StringArray& files, int, int)
 {
+    juce::Array<juce::File> audioFiles;
     for (const auto& path : files)
     {
         const juce::File f(path);
-        if (audioEngine.openFile(f))
-        {
-            audioEngine.play();
-            break;
-        }
+        const auto ext = f.getFileExtension().toLowerCase();
+        if (ext == ".mp3" || ext == ".flac" || ext == ".wav" || ext == ".aiff"
+            || ext == ".aif" || ext == ".m4a" || ext == ".alac" || ext == ".ogg")
+            audioFiles.add(f);
     }
+
+    audioEngine.addFiles(audioFiles);
 }

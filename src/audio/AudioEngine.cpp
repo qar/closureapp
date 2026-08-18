@@ -1,5 +1,7 @@
 #include "AudioEngine.h"
 
+#include <cmath>
+
 class AudioEngine::PositionTimer final : public juce::Timer
 {
 public:
@@ -15,20 +17,24 @@ private:
 };
 
 AudioEngine::AudioEngine()
+    : readAheadThread("Closure Audio Read Ahead"),
+      playlistSource(formatManager, readAheadThread)
 {
     formatManager.registerBasicFormats();
+    jassert(readAheadThread.startThread());
 
     auto result = deviceManager.initialiseWithDefaultDevices(0, 2);
     jassert(result.isEmpty());
 
     // Prefer lower latency when the device allows it.
-    if (auto* device = deviceManager.getCurrentAudioDevice())
+    if (deviceManager.getCurrentAudioDevice() != nullptr)
     {
         auto setup = deviceManager.getAudioDeviceSetup();
         setup.bufferSize = juce::jmin(setup.bufferSize, 256);
         deviceManager.setAudioDeviceSetup(setup, true);
     }
 
+    transportSource.setSource(&playlistSource);
     sourcePlayer.setSource(&transportSource);
     deviceManager.addAudioCallback(&sourcePlayer);
     transportSource.addChangeListener(this);
@@ -39,36 +45,75 @@ AudioEngine::AudioEngine()
 AudioEngine::~AudioEngine()
 {
     stopPositionTimer();
+    transportSource.stop();
     transportSource.setSource(nullptr);
     transportSource.removeChangeListener(this);
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
+    readAheadThread.stopThread(2000);
 }
 
-bool AudioEngine::openFile(const juce::File& file)
+int AudioEngine::addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty)
 {
-    if (!file.existsAsFile())
+    const auto wasEmpty = playlistSource.getState().trackCount == 0;
+    const auto added = playlistSource.addFiles(files);
+    if (added <= 0)
+        return 0;
+
+    notifyState();
+
+    if (wasEmpty && startPlaybackIfEmpty)
+        play();
+
+    return added;
+}
+
+bool AudioEngine::removeTrack(int index)
+{
+    const auto stateBefore = playlistSource.getState();
+    const auto removed = playlistSource.removeTrack(index);
+    if (!removed)
         return false;
 
-    auto* reader = formatManager.createReaderFor(file);
-    if (reader == nullptr)
-        return false;
-
-    auto newSource = std::make_unique<juce::AudioFormatReaderSource>(reader, true);
-    transportSource.setSource(newSource.get(), 0, nullptr, reader->sampleRate);
-    readerSource = std::move(newSource);
-
-    currentFileName = file.getFileName();
-    currentFilePath = file.getFullPathName();
+    if (stateBefore.trackCount == 1)
+        transportSource.stop();
 
     notifyState();
     return true;
 }
 
+void AudioEngine::clearPlaylist()
+{
+    transportSource.stop();
+    playlistSource.clear();
+    stopPositionTimer();
+    notifyState();
+}
+
+void AudioEngine::playTrack(int index)
+{
+    if (!playlistSource.selectTrack(index))
+        return;
+
+    transportSource.start();
+    startPositionTimer();
+    notifyState();
+}
+
+void AudioEngine::setLoopPlaylist(bool shouldLoop)
+{
+    playlistSource.setLooping(shouldLoop);
+    notifyState();
+}
+
 void AudioEngine::play()
 {
-    if (readerSource == nullptr)
+    const auto state = playlistSource.getState();
+    if (state.trackCount == 0)
         return;
+
+    if (state.isAtEnd && !state.isLooping)
+        playlistSource.resetCurrentTrack();
 
     transportSource.start();
     startPositionTimer();
@@ -85,7 +130,7 @@ void AudioEngine::pause()
 void AudioEngine::stop()
 {
     transportSource.stop();
-    transportSource.setPosition(0.0);
+    playlistSource.resetCurrentTrack();
     stopPositionTimer();
     notifyState();
 }
@@ -100,7 +145,10 @@ void AudioEngine::togglePlayPause()
 
 void AudioEngine::setPosition(double seconds)
 {
-    transportSource.setPosition(juce::jlimit(0.0, transportSource.getLengthInSeconds(), seconds));
+    const auto state = playlistSource.getState();
+    const auto samples = static_cast<int64>(std::llround(
+        juce::jmax(0.0, seconds) * state.sampleRate));
+    playlistSource.setCurrentTrackPosition(samples);
     notifyState();
 }
 
@@ -111,13 +159,21 @@ void AudioEngine::setGain(float gain01)
 
 AudioEngine::State AudioEngine::getState() const
 {
+    const auto playlistState = playlistSource.getState();
     State s;
-    s.hasFile = readerSource != nullptr;
+    s.hasFile = playlistState.trackCount > 0;
     s.isPlaying = transportSource.isPlaying();
-    s.positionSeconds = transportSource.getCurrentPosition();
-    s.lengthSeconds = transportSource.getLengthInSeconds();
-    s.fileName = currentFileName;
-    s.filePath = currentFilePath;
+    s.positionSeconds = playlistState.sampleRate > 0.0
+                      ? static_cast<double>(playlistState.currentPositionSamples) / playlistState.sampleRate
+                      : 0.0;
+    s.lengthSeconds = playlistState.sampleRate > 0.0
+                    ? static_cast<double>(playlistState.currentLengthSamples) / playlistState.sampleRate
+                    : 0.0;
+    s.fileName = playlistState.currentFileName;
+    s.filePath = playlistState.currentFilePath;
+    s.currentTrackIndex = playlistState.currentTrackIndex;
+    s.loopPlaylist = playlistState.isLooping;
+    s.playlistNames = playlistState.trackNames;
     return s;
 }
 
