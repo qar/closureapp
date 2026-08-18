@@ -1,4 +1,4 @@
-// AppKit before any JUCE headers — avoids Component/Point name clashes with Carbon.
+// AppKit before any JUCE headers avoids Component/Point name clashes with Carbon.
 #import <AppKit/AppKit.h>
 
 #include "MacGlassWindow.h"
@@ -20,41 +20,16 @@ void enable(juce::ComponentPeer* peer)
     if (window == nil)
         return;
 
-    window.titlebarAppearsTransparent = YES;
+    // Keep the native traffic-light buttons, but let the app content paint under
+    // the titlebar so there is no separate black strip above the player.
     window.titleVisibility = NSWindowTitleHidden;
+    window.titlebarAppearsTransparent = YES;
     window.styleMask |= NSWindowStyleMaskFullSizeContentView;
     window.backgroundColor = [NSColor clearColor];
     window.opaque = NO;
     window.hasShadow = YES;
-
-    if (@available(macOS 11.0, *))
-        window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
-
-    NSView* juceView = window.contentView;
-    if (juceView == nil || juceView != nsView)
-        return;
-
-    // JUCE owns the window's root view. Put both JUCE and the effect view in a
-    // separate container so the effect can be a real background sibling.
-    NSView* container = [[NSView alloc] initWithFrame:juceView.bounds];
-    container.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [window setContentView:container];
-
-    NSVisualEffectView* effect = [[NSVisualEffectView alloc] initWithFrame:container.bounds];
-    effect.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    effect.state = NSVisualEffectStateActive;
-    effect.material = NSVisualEffectMaterialHUDWindow;
-    effect.wantsLayer = YES;
-
-    [container addSubview:effect positioned:NSWindowBelow relativeTo:nil];
-
-    juceView.frame = container.bounds;
-    juceView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [container addSubview:juceView positioned:NSWindowAbove relativeTo:effect];
-
-    [effect release];
-    [container release];
+    nsView.frame = window.contentView.bounds;
+    nsView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 }
 
 } // namespace MacGlassWindow

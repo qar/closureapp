@@ -328,6 +328,8 @@ void GaplessPlaylistSource::clear()
     currentTrackIndex = -1;
     currentPositionSamples = 0;
     totalPositionSamples = 0;
+    pendingGapSamples = 0;
+    pendingTrackIndex = -1;
 }
 
 bool GaplessPlaylistSource::selectTrack(int index)
@@ -344,6 +346,8 @@ void GaplessPlaylistSource::selectTrackLocked(int index)
 {
     currentTrackIndex = index;
     currentPositionSamples = 0;
+    pendingGapSamples = 0;
+    pendingTrackIndex = -1;
     resetTrackLocked(index);
     updateGlobalPositionLocked();
 }
@@ -357,6 +361,8 @@ void GaplessPlaylistSource::resetCurrentTrack()
     if (currentTrackIndex >= 0)
     {
         currentPositionSamples = 0;
+        pendingGapSamples = 0;
+        pendingTrackIndex = -1;
         resetTrackLocked(currentTrackIndex);
         updateGlobalPositionLocked();
     }
@@ -372,15 +378,45 @@ void GaplessPlaylistSource::setCurrentTrackPosition(int64 positionSamples)
         0,
         tracks[static_cast<size_t>(currentTrackIndex)]->outputLength,
         positionSamples);
+    pendingGapSamples = 0;
+    pendingTrackIndex = -1;
     resetTrackLocked(currentTrackIndex);
     tracks[static_cast<size_t>(currentTrackIndex)]->setOutputPosition(currentPositionSamples);
     updateGlobalPositionLocked();
 }
 
-void GaplessPlaylistSource::setLooping(bool shouldLoop)
+void GaplessPlaylistSource::setRepeatMode(RepeatMode mode)
 {
     const juce::ScopedLock sl(stateLock);
-    loopPlaylist = shouldLoop;
+    repeatMode = mode;
+}
+
+void GaplessPlaylistSource::setLooping(bool shouldLoop)
+{
+    setRepeatMode(shouldLoop ? RepeatMode::playlist : RepeatMode::off);
+}
+
+void GaplessPlaylistSource::setGaplessPlayback(bool shouldBeGapless)
+{
+    const juce::ScopedLock sl(stateLock);
+    if (gaplessPlayback == shouldBeGapless)
+        return;
+
+    gaplessPlayback = shouldBeGapless;
+    pendingGapSamples = 0;
+    pendingTrackIndex = -1;
+
+    if (juce::isPositiveAndBelow(currentTrackIndex, static_cast<int>(tracks.size())))
+    {
+        currentPositionSamples = juce::jlimit<int64>(
+            0,
+            tracks[static_cast<size_t>(currentTrackIndex)]->outputLength,
+            currentPositionSamples);
+        resetTrackLocked(currentTrackIndex);
+        tracks[static_cast<size_t>(currentTrackIndex)]->setOutputPosition(currentPositionSamples);
+    }
+
+    updateGlobalPositionLocked();
 }
 
 GaplessPlaylistSource::State GaplessPlaylistSource::getState() const
@@ -392,13 +428,18 @@ GaplessPlaylistSource::State GaplessPlaylistSource::getState() const
     result.currentPositionSamples = currentPositionSamples;
     result.totalPositionSamples = totalPositionSamples;
     result.sampleRate = outputSampleRate;
-    result.isLooping = loopPlaylist;
+    result.repeatMode = repeatMode;
+    result.gaplessPlayback = gaplessPlayback;
+    result.isLooping = repeatMode != RepeatMode::off;
     result.totalLengthSamples = getTotalLengthLocked();
 
     for (const auto& track : tracks)
     {
         if (track != nullptr)
+        {
             result.trackNames.add(track->file.getFileName());
+            result.trackPaths.add(track->file.getFullPathName());
+        }
     }
 
     if (juce::isPositiveAndBelow(currentTrackIndex, static_cast<int>(tracks.size())))
@@ -427,6 +468,8 @@ void GaplessPlaylistSource::prepareToPlay(int samplesPerBlockExpected, double sa
 
     prepared = true;
     currentPositionSamples = 0;
+    pendingGapSamples = 0;
+    pendingTrackIndex = -1;
     if (!tracks.empty())
         currentTrackIndex = juce::jlimit(0, static_cast<int>(tracks.size()) - 1, currentTrackIndex);
     else
@@ -464,6 +507,26 @@ void GaplessPlaylistSource::getNextAudioBlock(const juce::AudioSourceChannelInfo
 
     while (samplesRemaining > 0 && currentTrackIndex >= 0)
     {
+        if (pendingGapSamples > 0)
+        {
+            const auto silenceSamples = juce::jmin<int64>(pendingGapSamples, samplesRemaining);
+            info.buffer->clear(info.startSample + destinationOffset,
+                               static_cast<int>(silenceSamples));
+            pendingGapSamples -= silenceSamples;
+            totalPositionSamples += silenceSamples;
+            destinationOffset += static_cast<int>(silenceSamples);
+            samplesRemaining -= static_cast<int>(silenceSamples);
+
+            if (pendingGapSamples == 0 && pendingTrackIndex >= 0)
+            {
+                const auto nextTrack = pendingTrackIndex;
+                pendingTrackIndex = -1;
+                selectTrackLocked(nextTrack);
+            }
+
+            continue;
+        }
+
         auto& track = tracks[static_cast<size_t>(currentTrackIndex)];
         const auto trackRemaining = track->outputLength - currentPositionSamples;
 
@@ -495,16 +558,29 @@ bool GaplessPlaylistSource::advanceToNextTrack()
     if (tracks.empty() || currentTrackIndex < 0)
         return false;
 
-    const auto nextIndex = currentTrackIndex + 1;
-    if (nextIndex >= static_cast<int>(tracks.size()))
+    auto nextIndex = currentTrackIndex + 1;
+    if (repeatMode == RepeatMode::single)
     {
-        if (!loopPlaylist)
+        nextIndex = currentTrackIndex;
+    }
+    else if (nextIndex >= static_cast<int>(tracks.size()))
+    {
+        if (repeatMode == RepeatMode::off)
         {
             totalPositionSamples = getTotalLengthLocked();
             return false;
         }
 
-        selectTrackLocked(0);
+        nextIndex = 0;
+    }
+
+    if (!gaplessPlayback)
+    {
+        pendingGapSamples = transitionGapSamplesLocked();
+        pendingTrackIndex = nextIndex;
+        currentTrackIndex = nextIndex;
+        currentPositionSamples = 0;
+        resetTrackLocked(currentTrackIndex);
         return true;
     }
 
@@ -523,6 +599,8 @@ void GaplessPlaylistSource::setNextReadPosition(int64 newPosition)
     if (trackIndex < 0)
         return;
 
+    pendingGapSamples = 0;
+    pendingTrackIndex = -1;
     currentTrackIndex = trackIndex;
     currentPositionSamples = positionInTrack;
     resetTrackLocked(currentTrackIndex);
@@ -545,10 +623,16 @@ int64 GaplessPlaylistSource::getTotalLength() const
 int64 GaplessPlaylistSource::getTotalLengthLocked() const
 {
     int64 total = 0;
-    for (const auto& track : tracks)
+    for (int index = 0; index < static_cast<int>(tracks.size()); ++index)
     {
+        const auto& track = tracks[static_cast<size_t>(index)];
         if (track != nullptr)
+        {
             total += track->outputLength;
+
+            if (!gaplessPlayback && index + 1 < static_cast<int>(tracks.size()))
+                total += transitionGapSamplesLocked();
+        }
     }
     return total;
 }
@@ -556,7 +640,13 @@ int64 GaplessPlaylistSource::getTotalLengthLocked() const
 bool GaplessPlaylistSource::isLooping() const
 {
     const juce::ScopedLock sl(stateLock);
-    return loopPlaylist && !tracks.empty();
+    return repeatMode != RepeatMode::off && !tracks.empty();
+}
+
+bool GaplessPlaylistSource::isGaplessPlayback() const
+{
+    const juce::ScopedLock sl(stateLock);
+    return gaplessPlayback;
 }
 
 void GaplessPlaylistSource::resetTrackLocked(int index)
@@ -576,9 +666,19 @@ int64 GaplessPlaylistSource::trackStartPositionLocked(int index) const
     for (int i = 0; i < index && i < static_cast<int>(tracks.size()); ++i)
     {
         if (tracks[static_cast<size_t>(i)] != nullptr)
+        {
             position += tracks[static_cast<size_t>(i)]->outputLength;
+
+            if (!gaplessPlayback && i + 1 < static_cast<int>(tracks.size()))
+                position += transitionGapSamplesLocked();
+        }
     }
     return position;
+}
+
+int64 GaplessPlaylistSource::transitionGapSamplesLocked() const
+{
+    return static_cast<int64>(std::llround(outputSampleRate * 0.08));
 }
 
 int GaplessPlaylistSource::findTrackForPositionLocked(int64 position,
@@ -594,6 +694,18 @@ int GaplessPlaylistSource::findTrackForPositionLocked(int64 position,
             return index;
         }
         start += length;
+
+        if (!gaplessPlayback && index + 1 < static_cast<int>(tracks.size()))
+        {
+            const auto gap = transitionGapSamplesLocked();
+            if (position < start + gap)
+            {
+                positionInTrack = 0;
+                return index + 1;
+            }
+
+            start += gap;
+        }
     }
 
     positionInTrack = 0;

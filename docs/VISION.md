@@ -5,7 +5,7 @@
 ## 产品原则
 
 1. **音质第一**：尽量 bit-perfect / 高品质重采样；设备路由清晰可控。
-2. **UI 克制**：少控件、大留白；毛玻璃 + 柔和渐变（约 2009 AirPlay 国产播放器气质）。
+2. **UI 克制**：少控件、大留白；使用标准 macOS 窗口和轻量毛玻璃内容区。
 3. **本地优先**：v1 只做本机文件；云同步（Google Drive 等）后置。
 4. **跨端同一内核**：音频与曲库逻辑与平台 UI 壳分离；v1 只交付 macOS。
 
@@ -15,7 +15,7 @@
 |----|------|
 | 打开 / 拖入本地音频并播放 | 歌单库 / 扫描整个 Music 目录 |
 | 播放 / 暂停 / 停止 / 进度 / 音量 | 均衡器、DSP 插件宿主 |
-| 毛玻璃窗口 + 玻璃卡片 UI | Windows / Linux / iOS / Android |
+| 标准 macOS 窗口 + 简洁毛玻璃 UI | Windows / Linux / iOS / Android |
 | 常见格式（系统解码 + JUCE 基础格式） | Google Drive / 流媒体 |
 | | 歌词、封面抓取、在线元数据 |
 
@@ -23,7 +23,7 @@
 
 ```
 ┌─────────────────────────────────────┐
-│  UI (JUCE components + platform FX) │  macOS: NSVisualEffectView
+│  UI (JUCE components + glass LF)    │  native macOS + visual effect
 ├─────────────────────────────────────┤
 │  AudioEngine                        │  device · transport · formats
 ├─────────────────────────────────────┤
@@ -32,7 +32,7 @@
 ```
 
 - `AudioEngine`：深模块——打开文件、播控、状态回调；UI 不碰设备细节。
-- `PlayerPanel` / `GlassLookAndFeel`：可换肤；平台模糊在 `MacGlassWindow`。
+- `PlayerPanel` / `GlassLookAndFeel`：可换肤的布局与控件层。
 - 曲库、云盘：作为后续 adapter，不进 v1 主路径。
 
 ## 音质方向（后续迭代）
@@ -44,7 +44,7 @@
 
 ## UI 方向
 
-- 大面积磨砂、圆角卡片、细描边、顶部高光
-- 蓝紫天空渐变底（可换成专辑主色）
-- 控件少：Open / Play·Pause / Stop、进度、音量
+- 低透明度浅色背景、适度圆角卡片、细描边
+- 蓝色主操作色，其他控件保持低对比度
+- 控件少：Add、播放控制图标、进度、音量
 - 中英混排时用系统字体栈，避免花哨装饰字体

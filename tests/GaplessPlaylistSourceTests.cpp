@@ -1,5 +1,6 @@
 #include <JuceHeader.h>
 #include "audio/GaplessPlaylistSource.h"
+#include "audio/TrackMetadata.h"
 
 #include <cmath>
 #include <cstdio>
@@ -55,6 +56,25 @@ bool verifyValue(const juce::AudioBuffer<float>& buffer,
 
 int main()
 {
+    juce::StringPairArray metadataValues;
+    metadataValues.set("ID3TITLE", "Tagged title");
+    metadataValues.set("IART", "Tagged artist");
+    if (!expect(TrackMetadataUtil::firstValue(metadataValues, { "id3title" }) == "Tagged title",
+                "metadata keys are matched case-insensitively")
+        || !expect(TrackMetadataUtil::firstValue(metadataValues, { "missing", "IART" }) == "Tagged artist",
+                   "metadata aliases fall back in order"))
+    {
+        return 1;
+    }
+
+    const auto fallback = TrackMetadataUtil::fallbackForFile(juce::File("/tmp/Fallback Song.flac"));
+    if (!expect(fallback.title == "Fallback Song", "metadata fallback uses the file name")
+        || !expect(fallback.artist == "Unknown Artist", "metadata fallback has an artist label")
+        || !expect(fallback.album == "Local Files", "metadata fallback has a local album label"))
+    {
+        return 1;
+    }
+
     const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
         .getChildFile("closure-gapless-playlist-tests");
     root.deleteRecursively();
@@ -91,9 +111,13 @@ int main()
     output.clear();
     source.getNextAudioBlock({ &output, 0, output.getNumSamples() });
 
+    const auto firstState = source.getState();
     bool passed = expect(verifyValue(output, 0, 8, 0.25f), "first track has no corruption")
                && expect(verifyValue(output, 8, 8, 0.75f), "second track starts in the same block")
-               && expect(source.getState().currentTrackIndex == 1, "current track advances at boundary");
+               && expect(firstState.currentTrackIndex == 1, "current track advances at boundary")
+               && expect(firstState.trackPaths.size() == 2
+                          && firstState.trackPaths[0] == first.getFullPathName(),
+                          "playlist state keeps track paths for metadata");
 
     source.setLooping(true);
     source.selectTrack(0);

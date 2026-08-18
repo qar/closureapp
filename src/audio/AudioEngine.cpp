@@ -1,6 +1,57 @@
 #include "AudioEngine.h"
 
+#include <algorithm>
 #include <cmath>
+
+namespace
+{
+bool isSupportedAudioFile(const juce::File& file)
+{
+    const auto extension = file.getFileExtension().toLowerCase();
+    return extension == ".mp3" || extension == ".flac" || extension == ".wav"
+        || extension == ".aiff" || extension == ".aif" || extension == ".m4a"
+        || extension == ".alac" || extension == ".ogg";
+}
+
+struct FilePathComparator
+{
+    int compareElements(const juce::File& first, const juce::File& second) const
+    {
+        return first.getFullPathName().compareIgnoreCase(second.getFullPathName());
+    }
+};
+
+juce::Array<juce::File> expandAudioInputs(const juce::Array<juce::File>& inputs)
+{
+    juce::Array<juce::File> expanded;
+
+    for (const auto& input : inputs)
+    {
+        if (input.existsAsFile())
+        {
+            if (isSupportedAudioFile(input))
+                expanded.add(input);
+            continue;
+        }
+
+        if (!input.isDirectory())
+            continue;
+
+        juce::Array<juce::File> children;
+        input.findChildFiles(children, juce::File::findFiles, true, "*");
+        FilePathComparator comparator;
+        children.sort(comparator, true);
+
+        for (const auto& child : children)
+        {
+            if (isSupportedAudioFile(child))
+                expanded.add(child);
+        }
+    }
+
+    return expanded;
+}
+}
 
 class AudioEngine::PositionTimer final : public juce::Timer
 {
@@ -23,6 +74,8 @@ AudioEngine::AudioEngine()
     formatManager.registerBasicFormats();
     jassert(readAheadThread.startThread());
 
+    configureProperties();
+
     auto result = deviceManager.initialiseWithDefaultDevices(0, 2);
     jassert(result.isEmpty());
 
@@ -40,6 +93,7 @@ AudioEngine::AudioEngine()
     transportSource.addChangeListener(this);
 
     positionTimer = std::make_unique<PositionTimer>(*this);
+    restorePlaylist();
 }
 
 AudioEngine::~AudioEngine()
@@ -50,16 +104,25 @@ AudioEngine::~AudioEngine()
     transportSource.removeChangeListener(this);
     deviceManager.removeAudioCallback(&sourcePlayer);
     sourcePlayer.setSource(nullptr);
+    applicationProperties.saveIfNeeded();
     readAheadThread.stopThread(2000);
 }
 
 int AudioEngine::addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty)
 {
+    const auto expandedFiles = expandAudioInputs(files);
+    if (expandedFiles.isEmpty())
+        return 0;
+
     const auto wasEmpty = playlistSource.getState().trackCount == 0;
-    const auto added = playlistSource.addFiles(files);
+    const auto added = playlistSource.addFiles(expandedFiles);
     if (added <= 0)
         return 0;
 
+    for (const auto& file : expandedFiles)
+        scheduleMetadataRead(file);
+
+    savePlaylist();
     notifyState();
 
     if (wasEmpty && startPlaybackIfEmpty)
@@ -78,6 +141,13 @@ bool AudioEngine::removeTrack(int index)
     if (stateBefore.trackCount == 1)
         transportSource.stop();
 
+    if (juce::isPositiveAndBelow(index, stateBefore.trackPaths.size()))
+    {
+        const juce::ScopedLock sl(metadataLock);
+        metadataByPath.erase(stateBefore.trackPaths[index].toStdString());
+    }
+
+    savePlaylist();
     notifyState();
     return true;
 }
@@ -86,7 +156,12 @@ void AudioEngine::clearPlaylist()
 {
     transportSource.stop();
     playlistSource.clear();
+    {
+        const juce::ScopedLock sl(metadataLock);
+        metadataByPath.clear();
+    }
     stopPositionTimer();
+    savePlaylist();
     notifyState();
 }
 
@@ -100,9 +175,15 @@ void AudioEngine::playTrack(int index)
     notifyState();
 }
 
-void AudioEngine::setLoopPlaylist(bool shouldLoop)
+void AudioEngine::setRepeatMode(RepeatMode mode)
 {
-    playlistSource.setLooping(shouldLoop);
+    playlistSource.setRepeatMode(mode);
+    notifyState();
+}
+
+void AudioEngine::setGaplessPlayback(bool shouldBeGapless)
+{
+    playlistSource.setGaplessPlayback(shouldBeGapless);
     notifyState();
 }
 
@@ -112,7 +193,7 @@ void AudioEngine::play()
     if (state.trackCount == 0)
         return;
 
-    if (state.isAtEnd && !state.isLooping)
+    if (state.isAtEnd && state.repeatMode == RepeatMode::off)
         playlistSource.resetCurrentTrack();
 
     transportSource.start();
@@ -141,6 +222,54 @@ void AudioEngine::togglePlayPause()
         pause();
     else
         play();
+}
+
+void AudioEngine::playPrevious()
+{
+    const auto state = playlistSource.getState();
+    if (!juce::isPositiveAndBelow(state.currentTrackIndex, state.trackCount))
+        return;
+
+    if (state.currentPositionSamples > static_cast<int64>(state.sampleRate * 3.0))
+    {
+        setPosition(0.0);
+        return;
+    }
+
+    auto previousIndex = state.currentTrackIndex - 1;
+    if (previousIndex < 0)
+    {
+        if (state.repeatMode != RepeatMode::playlist)
+        {
+            setPosition(0.0);
+            return;
+        }
+
+        previousIndex = state.trackCount - 1;
+    }
+
+    playTrack(previousIndex);
+}
+
+void AudioEngine::playNext()
+{
+    const auto state = playlistSource.getState();
+    if (!juce::isPositiveAndBelow(state.currentTrackIndex, state.trackCount))
+        return;
+
+    auto nextIndex = state.currentTrackIndex + 1;
+    if (nextIndex >= state.trackCount)
+    {
+        if (state.repeatMode != RepeatMode::playlist)
+        {
+            stop();
+            return;
+        }
+
+        nextIndex = 0;
+    }
+
+    playTrack(nextIndex);
 }
 
 void AudioEngine::setPosition(double seconds)
@@ -172,8 +301,20 @@ AudioEngine::State AudioEngine::getState() const
     s.fileName = playlistState.currentFileName;
     s.filePath = playlistState.currentFilePath;
     s.currentTrackIndex = playlistState.currentTrackIndex;
-    s.loopPlaylist = playlistState.isLooping;
+    s.repeatMode = playlistState.repeatMode;
+    s.gaplessPlayback = playlistState.gaplessPlayback;
     s.playlistNames = playlistState.trackNames;
+    s.playlistPaths = playlistState.trackPaths;
+
+    {
+        const juce::ScopedLock sl(metadataLock);
+        for (const auto& path : s.playlistPaths)
+        {
+            const auto found = metadataByPath.find(path.toStdString());
+            s.playlistMetadata.push_back(found != metadataByPath.end() ? found->second : nullptr);
+        }
+    }
+
     return s;
 }
 
@@ -208,4 +349,84 @@ void AudioEngine::stopPositionTimer()
 {
     if (positionTimer != nullptr)
         positionTimer->stopTimer();
+}
+
+void AudioEngine::configureProperties()
+{
+    juce::PropertiesFile::Options options;
+    options.applicationName = "Closure";
+    options.filenameSuffix = ".settings";
+    options.folderName = "Closure";
+    options.storageFormat = juce::PropertiesFile::storeAsXML;
+    options.millisecondsBeforeSaving = 0;
+
+#if JUCE_MAC
+    options.osxLibrarySubFolder = "Application Support";
+#endif
+
+    applicationProperties.setStorageParameters(options);
+}
+
+void AudioEngine::restorePlaylist()
+{
+    auto* settings = applicationProperties.getUserSettings();
+    if (settings == nullptr)
+        return;
+
+    juce::Array<juce::File> files;
+    juce::StringArray paths;
+    paths.addLines(settings->getValue("playlistPaths"));
+
+    for (const auto& path : paths)
+    {
+        const auto trimmedPath = path.trim();
+        const juce::File file(trimmedPath);
+        if (trimmedPath.isNotEmpty() && file.existsAsFile())
+            files.add(file);
+    }
+
+    if (!files.isEmpty())
+        addFiles(files, false);
+
+    // Remove paths for files that no longer exist.
+    savePlaylist();
+}
+
+void AudioEngine::savePlaylist()
+{
+    auto* settings = applicationProperties.getUserSettings();
+    if (settings == nullptr)
+        return;
+
+    const auto state = playlistSource.getState();
+    settings->setValue("playlistPaths", state.trackPaths.joinIntoString("\n"));
+    applicationProperties.saveIfNeeded();
+}
+
+void AudioEngine::scheduleMetadataRead(const juce::File& file)
+{
+    if (!file.existsAsFile())
+        return;
+
+    {
+        const juce::ScopedLock sl(metadataLock);
+        metadataByPath[file.getFullPathName().toStdString()] =
+            std::make_shared<const TrackMetadata>(TrackMetadataUtil::fallbackForFile(file));
+    }
+
+    metadataReader.readAsync(file, [this](TrackMetadata metadata)
+    {
+        metadataReady(std::move(metadata));
+    });
+}
+
+void AudioEngine::metadataReady(TrackMetadata metadata)
+{
+    const auto key = metadata.file.getFullPathName().toStdString();
+    {
+        const juce::ScopedLock sl(metadataLock);
+        metadataByPath[key] = std::make_shared<const TrackMetadata>(std::move(metadata));
+    }
+
+    notifyState();
 }

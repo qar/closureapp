@@ -15,6 +15,13 @@
 class GaplessPlaylistSource final : public juce::PositionableAudioSource
 {
 public:
+    enum class RepeatMode
+    {
+        off,
+        single,
+        playlist
+    };
+
     struct State
     {
         int currentTrackIndex = -1;
@@ -24,11 +31,14 @@ public:
         int64 totalPositionSamples = 0;
         int64 totalLengthSamples = 0;
         double sampleRate = 44100.0;
+        RepeatMode repeatMode = RepeatMode::playlist;
+        bool gaplessPlayback = true;
         bool isLooping = true;
         bool isAtEnd = false;
         juce::String currentFileName;
         juce::String currentFilePath;
         juce::StringArray trackNames;
+        juce::StringArray trackPaths;
     };
 
     GaplessPlaylistSource(juce::AudioFormatManager& formatManager,
@@ -42,7 +52,9 @@ public:
     bool selectTrack(int index);
     void resetCurrentTrack();
     void setCurrentTrackPosition(int64 positionSamples);
+    void setRepeatMode(RepeatMode mode);
     void setLooping(bool shouldLoop) override;
+    void setGaplessPlayback(bool shouldBeGapless);
 
     State getState() const;
 
@@ -54,6 +66,7 @@ public:
     int64 getNextReadPosition() const override;
     int64 getTotalLength() const override;
     bool isLooping() const override;
+    bool isGaplessPlayback() const;
 
 private:
     class TrackSource;
@@ -65,6 +78,7 @@ private:
     void updateGlobalPositionLocked();
     int64 getTotalLengthLocked() const;
     int64 trackStartPositionLocked(int index) const;
+    int64 transitionGapSamplesLocked() const;
     int findTrackForPositionLocked(int64 position, int64& positionInTrack) const;
 
     juce::AudioFormatManager& formatManager;
@@ -78,7 +92,10 @@ private:
     double outputSampleRate = 44100.0;
     int expectedBlockSize = 512;
     bool prepared = false;
-    bool loopPlaylist = true;
+    RepeatMode repeatMode = RepeatMode::playlist;
+    bool gaplessPlayback = true;
+    int64 pendingGapSamples = 0;
+    int pendingTrackIndex = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GaplessPlaylistSource)
 };

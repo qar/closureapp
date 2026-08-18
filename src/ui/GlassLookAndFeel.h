@@ -2,7 +2,7 @@
 
 #include <JuceHeader.h>
 
-/** Soft glass / late-2000s AirPlay-era aesthetic. */
+/** Lightweight frosted-glass controls for the desktop player layout. */
 class GlassLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -13,6 +13,11 @@ public:
                               const juce::Colour& backgroundColour,
                               bool shouldDrawButtonAsHighlighted,
                               bool shouldDrawButtonAsDown) override;
+
+    void drawButtonText(juce::Graphics& g,
+                        juce::TextButton& button,
+                        bool shouldDrawButtonAsHighlighted,
+                        bool shouldDrawButtonAsDown) override;
 
     void drawLinearSlider(juce::Graphics& g,
                           int x, int y, int width, int height,
@@ -25,9 +30,9 @@ public:
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
     juce::Font getLabelFont(juce::Label&) override;
 
-    static juce::Colour glassFill() { return juce::Colour(0x55ffffff); }
-    static juce::Colour glassStroke() { return juce::Colour(0x66ffffff); }
-    static juce::Colour inkPrimary() { return juce::Colour(0xff1a1a22); }
-    static juce::Colour inkMuted() { return juce::Colour(0xaa2a2a35); }
-    static juce::Colour accent() { return juce::Colour(0xff5b8def); }
+    static juce::Colour glassFill() { return juce::Colour(0xffffffff); }
+    static juce::Colour glassStroke() { return juce::Colour(0xffdfe5ef); }
+    static juce::Colour inkPrimary() { return juce::Colour(0xff1d2433); }
+    static juce::Colour inkMuted() { return juce::Colour(0xff758098); }
+    static juce::Colour accent() { return juce::Colour(0xff3867d6); }
 };

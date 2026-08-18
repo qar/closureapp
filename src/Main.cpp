@@ -41,10 +41,10 @@ private:
             setUsingNativeTitleBar(true);
             setContentOwned(new MainComponent(), true);
             setResizable(true, true);
+            setResizeLimits(820, 520, 1600, 1100);
             centreWithSize(getWidth(), getHeight());
 
 #if JUCE_MAC
-            setTitleBarHeight(0);
             MacGlassWindow::enable(getPeer());
 #endif
 

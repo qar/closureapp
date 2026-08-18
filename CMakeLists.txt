@@ -28,6 +28,9 @@ target_sources(ClosureApp
         src/audio/AudioEngine.cpp
         src/audio/GaplessPlaylistSource.h
         src/audio/GaplessPlaylistSource.cpp
+        src/audio/TrackMetadata.h
+        src/audio/TrackMetadata.cpp
+        src/audio/TrackMetadataReader.mm
         src/ui/GlassLookAndFeel.h
         src/ui/GlassLookAndFeel.cpp
         src/ui/PlayerPanel.h
@@ -68,7 +71,7 @@ target_link_libraries(ClosureApp
 if(APPLE)
     target_link_libraries(ClosureApp PRIVATE
         "-framework AppKit"
-        "-framework QuartzCore"
+        "-framework AVFoundation"
     )
 endif()
 
@@ -90,6 +93,8 @@ if(CLOSURE_BUILD_TESTS)
             tests/GaplessPlaylistSourceTests.cpp
             src/audio/GaplessPlaylistSource.h
             src/audio/GaplessPlaylistSource.cpp
+            src/audio/TrackMetadata.h
+            src/audio/TrackMetadata.cpp
     )
 
     target_include_directories(ClosureAudioTests PRIVATE src)
@@ -107,6 +112,7 @@ if(CLOSURE_BUILD_TESTS)
             juce::juce_audio_devices
             juce::juce_audio_formats
             juce::juce_core
+            juce::juce_graphics
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags
