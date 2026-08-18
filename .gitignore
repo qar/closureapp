@@ -1,7 +1,14 @@
 node_modules/
 dist/
 out/
+build/
+cmake-build-*/
 .DS_Store
 *.log
 .env
 .env.*
+.idea/
+.vscode/
+*.user
+*.xcuserdata
+DerivedData/
