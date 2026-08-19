@@ -4,8 +4,11 @@
 #include "audio/AudioEngine.h"
 #include "ui/GlassLookAndFeel.h"
 
+#include <array>
+
 class PlayerPanel final : public juce::Component,
-                          private juce::ListBoxModel
+                          private juce::ListBoxModel,
+                          private juce::Timer
 {
 public:
     explicit PlayerPanel(AudioEngine& engine);
@@ -21,6 +24,9 @@ private:
     void seekFromSlider();
     void rebuildPlaylistRows();
     void updateControlLabels();
+    void updateVisualModeLabel();
+    void updateSpectrum();
+    void timerCallback() override;
 
     TrackMetadataPtr metadataAt(int index) const;
     juce::String titleAt(int index) const;
@@ -30,9 +36,13 @@ private:
     juce::String repeatModeText() const;
 
     void drawArtwork(juce::Graphics& g,
-                    juce::Rectangle<float> bounds,
-                    const TrackMetadataPtr& metadata,
-                    const juce::String& fallbackKey) const;
+                     juce::Rectangle<float> bounds,
+                     const TrackMetadataPtr& metadata,
+                     const juce::String& fallbackKey) const;
+    void drawSpectrum(juce::Graphics& g,
+                      juce::Rectangle<float> bounds,
+                      const TrackMetadataPtr& metadata,
+                      const juce::String& fallbackKey) const;
     void drawCard(juce::Graphics& g, juce::Rectangle<float> bounds) const;
     void drawTransportSurface(juce::Graphics& g, juce::Rectangle<float> bounds) const;
 
@@ -67,12 +77,26 @@ private:
     juce::TextButton nextButton { "Next" };
     juce::TextButton repeatButton { "Repeat" };
     juce::TextButton gaplessButton { "Gapless" };
+    juce::TextButton visualModeButton { "Spectrum" };
     juce::Slider positionSlider;
     juce::Slider volumeSlider;
 
+    // 4096 samples reaches the sub-20 Hz region while retaining the full Nyquist range.
+    static constexpr int spectrumOrder = 12;
+    static constexpr int spectrumSize = 1 << spectrumOrder;
+    static constexpr int spectrumBarCount = 48;
+    static constexpr int spectrumReadSize = 2048;
+
     bool isSeeking = false;
+    bool showSpectrum = false;
     AudioEngine::State currentState;
     std::vector<int> visibleTrackIndices;
+    juce::dsp::FFT spectrumFft;
+    juce::dsp::WindowingFunction<float> spectrumWindow;
+    std::array<float, spectrumSize> spectrumHistory {};
+    std::array<float, spectrumSize * 2> fftData {};
+    std::array<float, spectrumBarCount> spectrumLevels {};
+    std::array<float, spectrumReadSize> analysisReadBuffer {};
 
     juce::Rectangle<int> panelBounds;
     juce::Rectangle<int> nowPlayingBounds;

@@ -1,7 +1,9 @@
 #include "AudioEngine.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 
 namespace
 {
@@ -53,6 +55,95 @@ juce::Array<juce::File> expandAudioInputs(const juce::Array<juce::File>& inputs)
 }
 }
 
+class AudioEngine::AnalysisAudioSource final : public juce::AudioSource
+{
+public:
+    explicit AnalysisAudioSource(juce::AudioSource& sourceIn)
+        : source(sourceIn), fifo(analysisBufferSize)
+    {
+    }
+
+    void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
+    {
+        source.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        fifo.reset();
+    }
+
+    void releaseResources() override
+    {
+        source.releaseResources();
+    }
+
+    void getNextAudioBlock(const juce::AudioSourceChannelInfo& info) override
+    {
+        source.getNextAudioBlock(info);
+
+        if (info.buffer == nullptr || info.numSamples <= 0 || info.buffer->getNumChannels() == 0)
+            return;
+
+        int startIndex1 = 0;
+        int blockSize1 = 0;
+        int startIndex2 = 0;
+        int blockSize2 = 0;
+        fifo.prepareToWrite(info.numSamples, startIndex1, blockSize1, startIndex2, blockSize2);
+
+        const auto samplesToWrite = blockSize1 + blockSize2;
+        if (samplesToWrite <= 0)
+            return;
+
+        const auto sourceOffset = info.numSamples - samplesToWrite;
+        const auto* left = info.buffer->getReadPointer(0, info.startSample + sourceOffset);
+        const auto* right = info.buffer->getNumChannels() > 1
+                          ? info.buffer->getReadPointer(1, info.startSample + sourceOffset)
+                          : nullptr;
+
+        auto writeBlock = [left, right](float* destination, int sourceOffsetInBlock, int count)
+        {
+            for (int index = 0; index < count; ++index)
+            {
+                const auto leftSample = left[sourceOffsetInBlock + index];
+                destination[index] = right != nullptr
+                                   ? (leftSample + right[sourceOffsetInBlock + index]) * 0.5f
+                                   : leftSample;
+            }
+        };
+
+        writeBlock(audioBuffer.data() + startIndex1, 0, blockSize1);
+        writeBlock(audioBuffer.data() + startIndex2, blockSize1, blockSize2);
+        fifo.finishedWrite(samplesToWrite);
+    }
+
+    int readSamples(float* destination, int maxSamples)
+    {
+        if (destination == nullptr || maxSamples <= 0)
+            return 0;
+
+        int startIndex1 = 0;
+        int blockSize1 = 0;
+        int startIndex2 = 0;
+        int blockSize2 = 0;
+        fifo.prepareToRead(maxSamples, startIndex1, blockSize1, startIndex2, blockSize2);
+
+        const auto samplesRead = blockSize1 + blockSize2;
+        if (samplesRead <= 0)
+            return 0;
+
+        std::memcpy(destination, audioBuffer.data() + startIndex1,
+                    static_cast<size_t>(blockSize1) * sizeof(float));
+        std::memcpy(destination + blockSize1, audioBuffer.data() + startIndex2,
+                    static_cast<size_t>(blockSize2) * sizeof(float));
+        fifo.finishedRead(samplesRead);
+        return samplesRead;
+    }
+
+private:
+    static constexpr int analysisBufferSize = 32768;
+
+    juce::AudioSource& source;
+    juce::AbstractFifo fifo;
+    std::array<float, analysisBufferSize> audioBuffer {};
+};
+
 class AudioEngine::PositionTimer final : public juce::Timer
 {
 public:
@@ -69,7 +160,8 @@ private:
 
 AudioEngine::AudioEngine()
     : readAheadThread("Closure Audio Read Ahead"),
-      playlistSource(formatManager, readAheadThread)
+      playlistSource(formatManager, readAheadThread),
+      analysisSource(std::make_unique<AnalysisAudioSource>(transportSource))
 {
     formatManager.registerBasicFormats();
     jassert(readAheadThread.startThread());
@@ -88,7 +180,7 @@ AudioEngine::AudioEngine()
     }
 
     transportSource.setSource(&playlistSource);
-    sourcePlayer.setSource(&transportSource);
+    sourcePlayer.setSource(analysisSource.get());
     deviceManager.addAudioCallback(&sourcePlayer);
     transportSource.addChangeListener(this);
 
@@ -284,6 +376,11 @@ void AudioEngine::setPosition(double seconds)
 void AudioEngine::setGain(float gain01)
 {
     transportSource.setGain(juce::jlimit(0.0f, 1.0f, gain01));
+}
+
+int AudioEngine::readAnalysisSamples(float* destination, int maxSamples)
+{
+    return analysisSource != nullptr ? analysisSource->readSamples(destination, maxSamples) : 0;
 }
 
 AudioEngine::State AudioEngine::getState() const

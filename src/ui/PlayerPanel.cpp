@@ -1,6 +1,8 @@
 #include "PlayerPanel.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace
 {
@@ -62,7 +64,9 @@ juce::Colour artworkColour(const juce::String& key)
 }
 
 PlayerPanel::PlayerPanel(AudioEngine& engine)
-    : audioEngine(engine)
+    : audioEngine(engine),
+      spectrumFft(spectrumOrder),
+      spectrumWindow(spectrumSize, juce::dsp::WindowingFunction<float>::hann)
 {
     setOpaque(true);
     setLookAndFeel(&lookAndFeel);
@@ -161,6 +165,17 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
         audioEngine.setGaplessPlayback(!currentState.gaplessPlayback);
     };
 
+    visualModeButton.setComponentID("option");
+    visualModeButton.setClickingTogglesState(true);
+    visualModeButton.setTooltip("Switch between artwork and spectrum");
+    visualModeButton.setName("Show spectrum");
+    visualModeButton.onClick = [this]
+    {
+        showSpectrum = visualModeButton.getToggleState();
+        updateVisualModeLabel();
+        repaint(artworkBounds);
+    };
+
     addAndMakeVisible(addButton);
     addAndMakeVisible(clearButton);
     addAndMakeVisible(previousButton);
@@ -169,6 +184,7 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     addAndMakeVisible(nextButton);
     addAndMakeVisible(repeatButton);
     addAndMakeVisible(gaplessButton);
+    addAndMakeVisible(visualModeButton);
 
     playlistList.setModel(this);
     playlistList.setRowHeight(64);
@@ -203,10 +219,12 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     addAndMakeVisible(volumeSlider);
 
     updateControlLabels();
+    startTimerHz(30);
 }
 
 PlayerPanel::~PlayerPanel()
 {
+    stopTimer();
     playlistList.setModel(nullptr);
     setLookAndFeel(nullptr);
 }
@@ -218,10 +236,20 @@ void PlayerPanel::paint(juce::Graphics& g)
     drawCard(g, playlistBounds.toFloat());
     drawTransportSurface(g, transportBounds.toFloat());
 
-    drawArtwork(g,
-                artworkBounds.toFloat(),
-                metadataAt(currentState.currentTrackIndex),
-                currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
+    if (showSpectrum)
+    {
+        drawSpectrum(g,
+                     artworkBounds.toFloat(),
+                     metadataAt(currentState.currentTrackIndex),
+                     currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
+    }
+    else
+    {
+        drawArtwork(g,
+                    artworkBounds.toFloat(),
+                    metadataAt(currentState.currentTrackIndex),
+                    currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
+    }
 }
 
 void PlayerPanel::resized()
@@ -254,6 +282,7 @@ void PlayerPanel::resized()
     const auto infoHeight = 84;
     const auto coverSize = juce::jmax(0, juce::jmin(nowArea.getWidth(), nowArea.getHeight() - infoHeight));
     artworkBounds = nowArea.removeFromTop(coverSize).withSizeKeepingCentre(coverSize, coverSize);
+    visualModeButton.setBounds(artworkBounds.reduced(12).removeFromTop(34).removeFromRight(94));
     nowArea.removeFromTop(16);
     currentTitleLabel.setBounds(nowArea.removeFromTop(28));
     currentArtistLabel.setBounds(nowArea.removeFromTop(24));
@@ -387,6 +416,7 @@ void PlayerPanel::updateControlLabels()
                                 juce::dontSendNotification);
     gaplessButton.setButtonText(currentState.gaplessPlayback ? "Gapless: On" : "Gapless: Off");
     gaplessButton.setToggleState(currentState.gaplessPlayback, juce::dontSendNotification);
+    updateVisualModeLabel();
 
     playButton.setEnabled(hasTracks);
     previousButton.setEnabled(hasTracks);
@@ -394,6 +424,74 @@ void PlayerPanel::updateControlLabels()
     nextButton.setEnabled(hasTracks);
     repeatButton.setEnabled(hasTracks);
     clearButton.setEnabled(hasTracks);
+}
+
+void PlayerPanel::updateVisualModeLabel()
+{
+    visualModeButton.setButtonText(showSpectrum ? "Artwork" : "Spectrum");
+    visualModeButton.setTooltip(showSpectrum ? "Show artwork" : "Show spectrum");
+    visualModeButton.setName(showSpectrum ? "Show artwork" : "Show spectrum");
+    visualModeButton.setToggleState(showSpectrum, juce::dontSendNotification);
+}
+
+void PlayerPanel::updateSpectrum()
+{
+    const auto samplesRead = audioEngine.readAnalysisSamples(analysisReadBuffer.data(),
+                                                             spectrumReadSize);
+    if (samplesRead > 0)
+    {
+        if (samplesRead >= spectrumSize)
+        {
+            std::memcpy(spectrumHistory.data(),
+                        analysisReadBuffer.data() + samplesRead - spectrumSize,
+                        static_cast<size_t>(spectrumSize) * sizeof(float));
+        }
+        else
+        {
+            std::memmove(spectrumHistory.data(),
+                         spectrumHistory.data() + samplesRead,
+                         static_cast<size_t>(spectrumSize - samplesRead) * sizeof(float));
+            std::memcpy(spectrumHistory.data() + spectrumSize - samplesRead,
+                        analysisReadBuffer.data(),
+                        static_cast<size_t>(samplesRead) * sizeof(float));
+        }
+    }
+
+    std::copy(spectrumHistory.begin(), spectrumHistory.end(), fftData.begin());
+    spectrumWindow.multiplyWithWindowingTable(fftData.data(), spectrumSize);
+    spectrumFft.performFrequencyOnlyForwardTransform(fftData.data());
+
+    const auto maxBinExclusive = spectrumSize / 2 + 1;
+    for (int bar = 0; bar < spectrumBarCount; ++bar)
+    {
+        const auto startRatio = static_cast<float>(bar) / static_cast<float>(spectrumBarCount);
+        const auto endRatio = static_cast<float>(bar + 1) / static_cast<float>(spectrumBarCount);
+        const auto lowBin = juce::jmax(1, static_cast<int>(std::floor(std::pow(maxBinExclusive, startRatio))));
+        const auto highBin = juce::jmin(maxBinExclusive,
+                                        juce::jmax(lowBin + 1,
+                                                   static_cast<int>(std::ceil(std::pow(maxBinExclusive, endRatio)))));
+
+        float peak = 0.0f;
+        for (int bin = lowBin; bin < highBin; ++bin)
+            peak = juce::jmax(peak, fftData[static_cast<size_t>(bin)] / static_cast<float>(spectrumSize));
+
+        const auto target = juce::jlimit(0.0f, 1.0f, peak * 8.0f);
+        spectrumLevels[static_cast<size_t>(bar)] = juce::jmax(target,
+                                                               spectrumLevels[static_cast<size_t>(bar)] * 0.82f);
+    }
+
+    if (samplesRead == 0)
+    {
+        for (auto& level : spectrumLevels)
+            level *= 0.92f;
+    }
+}
+
+void PlayerPanel::timerCallback()
+{
+    updateSpectrum();
+    if (showSpectrum)
+        repaint(artworkBounds);
 }
 
 TrackMetadataPtr PlayerPanel::metadataAt(int index) const
@@ -502,6 +600,76 @@ void PlayerPanel::drawArtwork(juce::Graphics& g,
         g.setColour(GlassLookAndFeel::inkPrimary().withAlpha(0.14f));
         g.fillEllipse(centre.x - 30.0f + marker * 12.0f, centre.y + radius + 22.0f,
                       7.0f, 7.0f);
+    }
+
+    g.restoreState();
+}
+
+void PlayerPanel::drawSpectrum(juce::Graphics& g,
+                               juce::Rectangle<float> bounds,
+                               const TrackMetadataPtr& metadata,
+                               const juce::String& fallbackKey) const
+{
+    if (bounds.isEmpty())
+        return;
+
+    juce::Path clip;
+    clip.addRoundedRectangle(bounds, 12.0f);
+    g.saveState();
+    g.reduceClipRegion(clip);
+
+    const bool hasContent = metadata != nullptr && metadata->file != juce::File{};
+    const auto colour = hasContent ? artworkColour(metadata->file.getFullPathName())
+                                   : artworkColour(fallbackKey);
+    juce::ColourGradient gradient(colour.darker(0.62f), bounds.getX(), bounds.getBottom(),
+                                  colour.darker(0.28f), bounds.getRight(), bounds.getY(), true);
+    g.setGradientFill(gradient);
+    g.fillRect(bounds);
+
+    const auto graph = bounds.reduced(22.0f, 24.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.10f));
+    for (int row = 1; row < 5; ++row)
+    {
+        const auto y = graph.getY() + graph.getHeight() * static_cast<float>(row) / 5.0f;
+        g.drawLine(graph.getX(), y, graph.getRight(), y, 1.0f);
+    }
+
+    auto graphArea = graph;
+    auto labelArea = graphArea.removeFromTop(22.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.78f));
+    g.setFont(makeFont(10.0f, true));
+    g.drawText("SPECTRUM", labelArea.toNearestInt(), juce::Justification::centredLeft, false);
+
+    const auto baseline = graphArea.getBottom() - 2.0f;
+    const auto gap = 3.0f;
+    const auto barWidth = juce::jmax(1.0f,
+                                     (graphArea.getWidth() - gap * static_cast<float>(spectrumBarCount - 1))
+                                         / static_cast<float>(spectrumBarCount));
+    const auto accent = juce::Colours::white.withAlpha(hasContent ? 0.90f : 0.62f);
+
+    for (int bar = 0; bar < spectrumBarCount; ++bar)
+    {
+        const auto level = spectrumLevels[static_cast<size_t>(bar)];
+        const auto height = juce::jmax(3.0f, graphArea.getHeight() * (0.04f + level * 0.90f));
+        const auto x = graphArea.getX() + static_cast<float>(bar) * (barWidth + gap);
+        auto barBounds = juce::Rectangle<float>(x, baseline - height, barWidth, height);
+        juce::ColourGradient barGradient(accent.brighter(0.12f), barBounds.getX(), barBounds.getY(),
+                                          accent.darker(0.28f), barBounds.getX(), barBounds.getBottom(), false);
+        g.setGradientFill(barGradient);
+        g.fillRoundedRectangle(barBounds, juce::jmin(3.0f, barWidth * 0.5f));
+    }
+
+    g.setColour(juce::Colours::white.withAlpha(0.30f));
+    g.drawLine(graphArea.getX(), baseline, graphArea.getRight(), baseline, 1.0f);
+
+    if (!hasContent)
+    {
+        g.setColour(juce::Colours::white.withAlpha(0.72f));
+        g.setFont(makeFont(13.0f));
+        g.drawText("Add audio to see the spectrum",
+                   graphArea.toNearestInt().withSizeKeepingCentre(static_cast<int>(graphArea.getWidth()), 26),
+                   juce::Justification::centred,
+                   false);
     }
 
     g.restoreState();

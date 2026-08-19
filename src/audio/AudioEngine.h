@@ -51,6 +51,8 @@ public:
     void setPosition(double seconds);
     void setGain(float gain01);
 
+    int readAnalysisSamples(float* destination, int maxSamples);
+
     State getState() const;
     void setStateCallback(StateCallback cb);
 
@@ -65,11 +67,14 @@ private:
     void scheduleMetadataRead(const juce::File& file);
     void metadataReady(TrackMetadata metadata);
 
+    class AnalysisAudioSource;
+
     juce::AudioDeviceManager deviceManager;
     juce::AudioFormatManager formatManager;
     juce::TimeSliceThread readAheadThread;
     GaplessPlaylistSource playlistSource;
     juce::AudioTransportSource transportSource;
+    std::unique_ptr<AnalysisAudioSource> analysisSource;
     juce::AudioSourcePlayer sourcePlayer;
     juce::ApplicationProperties applicationProperties;
 
