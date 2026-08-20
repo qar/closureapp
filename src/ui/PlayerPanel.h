@@ -55,7 +55,6 @@ private:
                       const TrackMetadataPtr& metadata,
                       const juce::String& fallbackKey) const;
     void drawCard(juce::Graphics& g, juce::Rectangle<float> bounds) const;
-    void drawTransportSurface(juce::Graphics& g, juce::Rectangle<float> bounds) const;
 
     int getNumRows() override;
     void paintListBoxItem(int rowNumber,
@@ -87,10 +86,10 @@ private:
     juce::TextButton clearButton { "Clear" };
     juce::TextButton albumsViewButton { "Albums" };
     juce::TextButton queueViewButton { "Queue" };
-    juce::TextButton previousButton { "Prev" };
-    juce::TextButton playButton { "Play" };
-    juce::TextButton stopButton { "Stop" };
-    juce::TextButton nextButton { "Next" };
+    juce::DrawableButton previousButton { "Previous track", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton playButton { "Play", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton stopButton { "Stop", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton nextButton { "Next track", juce::DrawableButton::ImageFitted };
     juce::TextButton repeatButton { "Repeat" };
     juce::TextButton gaplessButton { "Gapless" };
     juce::TextButton visualModeButton { "Spectrum" };

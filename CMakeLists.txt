@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(ClosureApp VERSION 0.1.0 LANGUAGES C CXX OBJC OBJCXX)
+project(ClosureApp VERSION 0.2.0 LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,6 +36,8 @@ target_sources(ClosureApp
         src/library/MusicLibrary.cpp
         src/ui/AlbumBrowser.h
         src/ui/AlbumBrowser.cpp
+        src/ui/icons/TransportIcons.h
+        src/ui/icons/LUCIDE_LICENSE.txt
         src/ui/GlassLookAndFeel.h
         src/ui/GlassLookAndFeel.cpp
         src/ui/PlayerPanel.h

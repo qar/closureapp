@@ -179,6 +179,7 @@ bool testMusicLibrary()
     root.deleteRecursively();
     return passed;
 }
+
 } // namespace
 
 int main()

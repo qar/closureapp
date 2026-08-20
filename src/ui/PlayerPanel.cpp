@@ -1,5 +1,6 @@
 #include "PlayerPanel.h"
 #include "audio/AudioFileFormats.h"
+#include "ui/icons/TransportIcons.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,7 +15,7 @@ constexpr int transportHeight = 148;
 
 juce::Colour backgroundColour()
 {
-    return juce::Colour(0xfff5f7fb);
+    return juce::Colour(0xfff3f5ef);
 }
 
 juce::Colour cardColour()
@@ -24,7 +25,7 @@ juce::Colour cardColour()
 
 juce::Colour borderColour()
 {
-    return juce::Colour(0xffe1e6ef);
+    return GlassLookAndFeel::glassStroke();
 }
 
 juce::String formatTime(double seconds)
@@ -61,6 +62,32 @@ juce::Colour artworkColour(const juce::String& key)
     const auto hash = static_cast<uint32_t>(key.hashCode());
     const auto hue = static_cast<float>(hash % 1000u) / 1000.0f;
     return juce::Colour::fromHSV(hue, 0.48f, 0.86f, 1.0f);
+}
+
+juce::String svgColour(juce::Colour colour)
+{
+    return juce::String::formatted("#%02x%02x%02x",
+                                   static_cast<int>(colour.getRed()),
+                                   static_cast<int>(colour.getGreen()),
+                                   static_cast<int>(colour.getBlue()));
+}
+
+std::unique_ptr<juce::Drawable> drawableFromSvg(const char* svg, juce::Colour colour)
+{
+    const auto svgText = juce::String(svg).replace("currentColor", svgColour(colour));
+    if (const auto xml = juce::XmlDocument::parse(svgText))
+        return juce::Drawable::createFromSVG(*xml);
+
+    return nullptr;
+}
+
+void setTransportIcon(juce::DrawableButton& button, const char* svg)
+{
+    button.setEdgeIndent(9);
+    const auto normal = drawableFromSvg(svg, GlassLookAndFeel::accent());
+    const auto over = drawableFromSvg(svg, GlassLookAndFeel::accent().brighter(0.15f));
+    const auto down = drawableFromSvg(svg, GlassLookAndFeel::accent().darker(0.12f));
+    button.setImages(normal.get(), over.get(), down.get());
 }
 }
 
@@ -132,25 +159,30 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     queueViewButton.setName("Show queue");
     queueViewButton.onClick = [this] { showQueueView(); };
 
-    previousButton.setComponentID("control");
+    previousButton.setComponentID("transport-previous");
     previousButton.setTooltip("Previous track");
     previousButton.setName("Previous track");
     previousButton.onClick = [this] { audioEngine.playPrevious(); };
 
-    playButton.setComponentID("primary");
+    playButton.setComponentID("transport-play");
     playButton.setTooltip("Play");
     playButton.setName("Play");
     playButton.onClick = [this] { audioEngine.togglePlayPause(); };
 
-    stopButton.setComponentID("control");
+    stopButton.setComponentID("transport-stop");
     stopButton.setTooltip("Stop");
     stopButton.setName("Stop");
     stopButton.onClick = [this] { audioEngine.stop(); };
 
-    nextButton.setComponentID("control");
+    nextButton.setComponentID("transport-next");
     nextButton.setTooltip("Next track");
     nextButton.setName("Next track");
     nextButton.onClick = [this] { audioEngine.playNext(); };
+
+    setTransportIcon(previousButton, ClosureTransportIcons::previous);
+    setTransportIcon(playButton, ClosureTransportIcons::play);
+    setTransportIcon(stopButton, ClosureTransportIcons::stop);
+    setTransportIcon(nextButton, ClosureTransportIcons::next);
 
     repeatButton.setComponentID("option");
     repeatButton.setTooltip("Cycle repeat mode");
@@ -277,20 +309,19 @@ void PlayerPanel::paint(juce::Graphics& g)
     g.fillAll(backgroundColour());
     drawCard(g, nowPlayingBounds.toFloat());
     drawCard(g, playlistBounds.toFloat());
-    drawTransportSurface(g, transportBounds.toFloat());
 
     if (showSpectrum)
     {
         drawSpectrum(g,
                      artworkBounds.toFloat(),
-                     metadataAt(currentState.currentTrackIndex),
+                     currentState.currentTrackMetadata,
                      currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
     else
     {
         drawArtwork(g,
                     artworkBounds.toFloat(),
-                    metadataAt(currentState.currentTrackIndex),
+                    currentState.currentTrackMetadata,
                     currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
 }
@@ -380,12 +411,21 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
     currentState = state;
     rebuildPlaylistRows();
 
-    if (juce::isPositiveAndBelow(currentState.currentTrackIndex,
-                                 currentState.playlistPaths.size()))
+    if (currentState.filePath.isNotEmpty())
     {
-        currentTitleLabel.setText(titleAt(currentState.currentTrackIndex), juce::dontSendNotification);
-        currentArtistLabel.setText(artistAt(currentState.currentTrackIndex), juce::dontSendNotification);
-        currentAlbumLabel.setText(albumAt(currentState.currentTrackIndex), juce::dontSendNotification);
+        const auto metadata = currentState.currentTrackMetadata;
+        currentTitleLabel.setText(metadata != nullptr && metadata->title.isNotEmpty()
+                                      ? metadata->title
+                                      : juce::File(currentState.filePath).getFileNameWithoutExtension(),
+                                  juce::dontSendNotification);
+        currentArtistLabel.setText(metadata != nullptr && metadata->artist.isNotEmpty()
+                                       ? metadata->artist
+                                       : "Unknown Artist",
+                                   juce::dontSendNotification);
+        currentAlbumLabel.setText(metadata != nullptr && metadata->album.isNotEmpty()
+                                      ? metadata->album
+                                      : currentState.activePlaylistName,
+                                  juce::dontSendNotification);
     }
     else
     {
@@ -406,8 +446,9 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
 
     playlistList.updateContent();
     playlistList.deselectAllRows();
-    if (juce::isPositiveAndBelow(currentState.currentTrackIndex,
-                                 static_cast<int>(visibleTrackIndices.size())))
+    if (currentState.queueIsActive
+        && juce::isPositiveAndBelow(currentState.currentTrackIndex,
+                                    static_cast<int>(visibleTrackIndices.size())))
     {
         playlistList.selectRow(currentState.currentTrackIndex, true);
     }
@@ -574,15 +615,24 @@ void PlayerPanel::playAlbum(const juce::String& albumId)
         return;
     }
 
-    if (audioEngine.replacePlaylistAndPlay(files) <= 0)
+    juce::String title;
+    for (const auto& album : libraryState.albums)
+    {
+        if (album.id == albumId)
+        {
+            title = album.title;
+            break;
+        }
+    }
+
+    if (audioEngine.playAlbumPlaylist(albumId,
+                                      title.isNotEmpty() ? title : albumId,
+                                      files) <= 0)
     {
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
                                                "Play album",
                                                "The album could not be loaded for playback.");
-        return;
     }
-
-    showQueueView();
 }
 
 void PlayerPanel::addAlbumToQueue(const juce::String& albumId)
@@ -645,8 +695,11 @@ void PlayerPanel::rebuildPlaylistRows()
 
 void PlayerPanel::updateControlLabels()
 {
-    const auto hasTracks = !currentState.playlistPaths.isEmpty();
-    playButton.setButtonText(currentState.isPlaying ? "Pause" : "Play");
+    const auto hasActiveTracks = currentState.hasFile;
+    const auto hasQueueTracks = !currentState.playlistPaths.isEmpty();
+    setTransportIcon(playButton,
+                     currentState.isPlaying ? ClosureTransportIcons::pause
+                                             : ClosureTransportIcons::play);
     playButton.setTooltip(currentState.isPlaying ? "Pause" : "Play");
     playButton.setName(currentState.isPlaying ? "Pause" : "Play");
     repeatButton.setButtonText(repeatModeText());
@@ -656,12 +709,12 @@ void PlayerPanel::updateControlLabels()
     gaplessButton.setToggleState(currentState.gaplessPlayback, juce::dontSendNotification);
     updateVisualModeLabel();
 
-    playButton.setEnabled(hasTracks);
-    previousButton.setEnabled(hasTracks);
-    stopButton.setEnabled(hasTracks);
-    nextButton.setEnabled(hasTracks);
-    repeatButton.setEnabled(hasTracks);
-    clearButton.setEnabled(hasTracks);
+    playButton.setEnabled(hasActiveTracks);
+    previousButton.setEnabled(hasActiveTracks);
+    stopButton.setEnabled(hasActiveTracks);
+    nextButton.setEnabled(hasActiveTracks);
+    repeatButton.setEnabled(hasActiveTracks);
+    clearButton.setEnabled(hasQueueTracks);
 }
 
 void PlayerPanel::updateVisualModeLabel()
@@ -772,7 +825,9 @@ double PlayerPanel::durationAt(int index) const
     if (const auto metadata = metadataAt(index); metadata != nullptr && metadata->durationSeconds > 0.0)
         return metadata->durationSeconds;
 
-    return index == currentState.currentTrackIndex ? currentState.lengthSeconds : 0.0;
+    return currentState.queueIsActive && index == currentState.currentTrackIndex
+         ? currentState.lengthSeconds
+         : 0.0;
 }
 
 juce::String PlayerPanel::repeatModeText() const
@@ -919,20 +974,9 @@ void PlayerPanel::drawCard(juce::Graphics& g, juce::Rectangle<float> bounds) con
         return;
 
     g.setColour(cardColour());
-    g.fillRoundedRectangle(bounds, 16.0f);
+    g.fillRoundedRectangle(bounds, 10.0f);
     g.setColour(borderColour());
-    g.drawRoundedRectangle(bounds, 16.0f, 1.0f);
-}
-
-void PlayerPanel::drawTransportSurface(juce::Graphics& g, juce::Rectangle<float> bounds) const
-{
-    if (bounds.isEmpty())
-        return;
-
-    g.setColour(cardColour());
-    g.fillRoundedRectangle(bounds, 16.0f);
-    g.setColour(borderColour());
-    g.drawRoundedRectangle(bounds, 16.0f, 1.0f);
+    g.drawRoundedRectangle(bounds, 10.0f, 1.0f);
 }
 
 int PlayerPanel::getNumRows()
@@ -953,12 +997,13 @@ void PlayerPanel::paintListBoxItem(int rowNumber,
     auto row = juce::Rectangle<float>(0.0f, 0.0f,
                                       static_cast<float>(width),
                                       static_cast<float>(height)).reduced(4.0f, 3.0f);
-    const bool isCurrent = trackIndex == currentState.currentTrackIndex;
+    const bool isCurrent = currentState.queueIsActive
+                        && trackIndex == currentState.currentTrackIndex;
 
     if (rowIsSelected || isCurrent)
     {
         g.setColour(GlassLookAndFeel::accent().withAlpha(rowIsSelected ? 0.13f : 0.07f));
-        g.fillRoundedRectangle(row, 10.0f);
+        g.fillRoundedRectangle(row, 6.0f);
     }
 
     const auto cover = row.removeFromLeft(48.0f).withSizeKeepingCentre(44.0f, 44.0f);

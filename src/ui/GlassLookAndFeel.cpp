@@ -1,125 +1,5 @@
 #include "GlassLookAndFeel.h"
 
-namespace
-{
-enum class IconKind
-{
-    none,
-    add,
-    play,
-    pause,
-    stop,
-    previous,
-    next,
-    loop
-};
-
-IconKind iconForButton(const juce::TextButton& button)
-{
-    const auto id = button.getComponentID();
-
-    if (id == "icon-add")             return IconKind::add;
-    if (id == "icon-featured-play")   return IconKind::play;
-    if (id == "icon-play")            return button.getButtonText() == "Pause" ? IconKind::pause : IconKind::play;
-    if (id == "icon-stop")            return IconKind::stop;
-    if (id == "icon-previous")        return IconKind::previous;
-    if (id == "icon-next")            return IconKind::next;
-    if (id == "icon-loop")            return IconKind::loop;
-
-    return IconKind::none;
-}
-
-void drawIcon(juce::Graphics& g, juce::Rectangle<float> bounds, IconKind kind, juce::Colour colour)
-{
-    const auto area = bounds.reduced(9.0f);
-    const auto centre = area.getCentre();
-    const float stroke = 1.8f;
-    g.setColour(colour);
-
-    switch (kind)
-    {
-        case IconKind::add:
-            g.drawLine(centre.x - 6.0f, centre.y, centre.x + 6.0f, centre.y, stroke);
-            g.drawLine(centre.x, centre.y - 6.0f, centre.x, centre.y + 6.0f, stroke);
-            break;
-
-        case IconKind::play:
-        {
-            juce::Path path;
-            path.addTriangle(area.getX() + 3.0f, area.getY() + 1.0f,
-                             area.getRight() - 2.0f, centre.y,
-                             area.getX() + 3.0f, area.getBottom() - 1.0f);
-            g.fillPath(path);
-            break;
-        }
-
-        case IconKind::pause:
-            g.fillRoundedRectangle(centre.x - 6.0f, centre.y - 7.0f, 4.0f, 14.0f, 1.0f);
-            g.fillRoundedRectangle(centre.x + 2.0f, centre.y - 7.0f, 4.0f, 14.0f, 1.0f);
-            break;
-
-        case IconKind::stop:
-            g.fillRoundedRectangle(centre.x - 6.0f, centre.y - 6.0f, 12.0f, 12.0f, 2.0f);
-            break;
-
-        case IconKind::previous:
-        case IconKind::next:
-        {
-            const bool pointsLeft = kind == IconKind::previous;
-            const float edge = pointsLeft ? area.getX() + 3.0f : area.getRight() - 3.0f;
-            const float tip = pointsLeft ? area.getX() + 8.0f : area.getRight() - 8.0f;
-            juce::Path triangle;
-            if (pointsLeft)
-                triangle.addTriangle(tip, area.getY() + 1.0f, edge, centre.y, tip, area.getBottom() - 1.0f);
-            else
-                triangle.addTriangle(tip, centre.y, edge, area.getY() + 1.0f, edge, area.getBottom() - 1.0f);
-            g.fillPath(triangle);
-
-            const float lineX = pointsLeft ? area.getX() + 1.0f : area.getRight() - 1.0f;
-            g.drawLine(lineX, area.getY() + 1.0f, lineX, area.getBottom() - 1.0f, stroke);
-            break;
-        }
-
-        case IconKind::loop:
-        {
-            const auto arc = area.reduced(2.0f);
-            const auto pi = juce::MathConstants<float>::pi;
-            const auto strokeType = juce::PathStrokeType(stroke,
-                                                         juce::PathStrokeType::curved,
-                                                         juce::PathStrokeType::rounded);
-
-            juce::Path topArc;
-            topArc.addCentredArc(arc.getCentreX(), arc.getCentreY(),
-                                 arc.getWidth() * 0.5f, arc.getHeight() * 0.5f,
-                                 0.0f, pi * 0.15f, pi * 1.05f, true);
-            g.strokePath(topArc, strokeType);
-
-            juce::Path bottomArc;
-            bottomArc.addCentredArc(arc.getCentreX(), arc.getCentreY(),
-                                    arc.getWidth() * 0.5f, arc.getHeight() * 0.5f,
-                                    0.0f, pi * 1.15f, pi * 2.05f, true);
-            g.strokePath(bottomArc, strokeType);
-
-            juce::Path topArrow;
-            topArrow.addTriangle(arc.getRight() - 1.0f, arc.getY() + 2.0f,
-                                 arc.getRight() - 7.0f, arc.getY() + 1.0f,
-                                 arc.getRight() - 2.0f, arc.getY() + 7.0f);
-            g.fillPath(topArrow);
-
-            juce::Path bottomArrow;
-            bottomArrow.addTriangle(arc.getX() + 1.0f, arc.getBottom() - 2.0f,
-                                    arc.getX() + 7.0f, arc.getBottom() - 1.0f,
-                                    arc.getX() + 2.0f, arc.getBottom() - 7.0f);
-            g.fillPath(bottomArrow);
-            break;
-        }
-
-        case IconKind::none:
-            break;
-    }
-}
-}
-
 GlassLookAndFeel::GlassLookAndFeel()
 {
     setColour(juce::ResizableWindow::backgroundColourId, juce::Colours::transparentBlack);
@@ -128,7 +8,7 @@ GlassLookAndFeel::GlassLookAndFeel()
     setColour(juce::TextButton::textColourOnId, inkPrimary());
     setColour(juce::Slider::thumbColourId, accent());
     setColour(juce::Slider::trackColourId, accent());
-    setColour(juce::Slider::backgroundColourId, juce::Colour(0xffdfe5ef));
+    setColour(juce::Slider::backgroundColourId, glassStroke());
     setColour(juce::Label::textColourId, inkPrimary());
 }
 
@@ -139,7 +19,7 @@ void GlassLookAndFeel::drawButtonBackground(juce::Graphics& g,
                                             bool shouldDrawButtonAsDown)
 {
     auto bounds = button.getLocalBounds().toFloat().reduced(1.0f);
-    const float radius = 9.0f;
+    const float radius = 6.0f;
     const auto id = button.getComponentID();
     const bool isPrimary = id == "primary" || id == "icon-featured-play" || id == "icon-play";
     const bool isQuiet = id == "quiet";
@@ -172,25 +52,14 @@ void GlassLookAndFeel::drawButtonText(juce::Graphics& g,
                                       bool /*shouldDrawButtonAsHighlighted*/,
                                       bool /*shouldDrawButtonAsDown*/)
 {
-    const auto kind = iconForButton(button);
-    if (kind == IconKind::none)
-    {
-        const auto id = button.getComponentID();
-        const auto colour = id == "primary" ? juce::Colours::white
-                                             : inkPrimary();
-        g.setColour(button.isEnabled() ? colour : colour.withAlpha(0.45f));
-        g.setFont(getTextButtonFont(button, button.getHeight()));
-        g.drawFittedText(button.getButtonText(),
-                         button.getLocalBounds().reduced(8, 0),
-                         juce::Justification::centred,
-                         1);
-        return;
-    }
-
-    const bool isPrimary = button.getComponentID() == "icon-featured-play"
-                        || button.getComponentID() == "icon-play";
-    const auto colour = isPrimary ? juce::Colours::white : inkPrimary();
-    drawIcon(g, button.getLocalBounds().toFloat(), kind, colour);
+    const auto id = button.getComponentID();
+    const auto colour = id == "primary" ? juce::Colours::white : inkPrimary();
+    g.setColour(button.isEnabled() ? colour : colour.withAlpha(0.45f));
+    g.setFont(getTextButtonFont(button, button.getHeight()));
+    g.drawFittedText(button.getButtonText(),
+                     button.getLocalBounds().reduced(8, 0),
+                     juce::Justification::centred,
+                     1);
 }
 
 void GlassLookAndFeel::drawLinearSlider(juce::Graphics& g,

@@ -153,13 +153,16 @@ private:
 
 AudioEngine::AudioEngine()
     : readAheadThread("Closure Audio Read Ahead"),
-      playlistSource(formatManager, readAheadThread),
       analysisSource(std::make_unique<AnalysisAudioSource>(transportSource))
 {
     formatManager.registerBasicFormats();
     jassert(readAheadThread.startThread());
 
     configureProperties();
+
+    auto queue = createPlaylistContext("queue", "Queue");
+    activePlaylist = queue.get();
+    playlists.push_back(std::move(queue));
 
     auto result = deviceManager.initialiseWithDefaultDevices(0, 2);
     jassert(result.isEmpty());
@@ -172,7 +175,7 @@ AudioEngine::AudioEngine()
         deviceManager.setAudioDeviceSetup(setup, true);
     }
 
-    transportSource.setSource(&playlistSource);
+    transportSource.setSource(activePlaylist->source.get());
     sourcePlayer.setSource(analysisSource.get());
     deviceManager.addAudioCallback(&sourcePlayer);
     transportSource.addChangeListener(this);
@@ -193,14 +196,72 @@ AudioEngine::~AudioEngine()
     readAheadThread.stopThread(2000);
 }
 
+std::unique_ptr<AudioEngine::PlaylistContext>
+AudioEngine::createPlaylistContext(const juce::String& id, const juce::String& name)
+{
+    auto context = std::make_unique<PlaylistContext>();
+    context->id = id;
+    context->name = name;
+    context->source = std::make_unique<GaplessPlaylistSource>(formatManager, readAheadThread);
+    context->source->setRepeatMode(currentRepeatMode);
+    context->source->setGaplessPlayback(currentGaplessPlayback);
+    return context;
+}
+
+AudioEngine::PlaylistContext& AudioEngine::queuePlaylist()
+{
+    jassert(!playlists.empty());
+    return *playlists.front();
+}
+
+const AudioEngine::PlaylistContext& AudioEngine::queuePlaylist() const
+{
+    jassert(!playlists.empty());
+    return *playlists.front();
+}
+
+AudioEngine::PlaylistContext* AudioEngine::findPlaylist(const juce::String& id)
+{
+    for (const auto& playlist : playlists)
+    {
+        if (playlist->id == id)
+            return playlist.get();
+    }
+
+    return nullptr;
+}
+
+GaplessPlaylistSource& AudioEngine::activeSource()
+{
+    jassert(activePlaylist != nullptr && activePlaylist->source != nullptr);
+    return *activePlaylist->source;
+}
+
+const GaplessPlaylistSource& AudioEngine::activeSource() const
+{
+    jassert(activePlaylist != nullptr && activePlaylist->source != nullptr);
+    return *activePlaylist->source;
+}
+
+void AudioEngine::switchToPlaylist(PlaylistContext& context)
+{
+    if (activePlaylist == &context)
+        return;
+
+    transportSource.stop();
+    transportSource.setSource(context.source.get());
+    activePlaylist = &context;
+}
+
 int AudioEngine::addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty)
 {
     const auto expandedFiles = expandAudioInputs(files);
     if (expandedFiles.isEmpty())
         return 0;
 
-    const auto wasEmpty = playlistSource.getState().trackCount == 0;
-    const auto added = playlistSource.addFiles(expandedFiles);
+    auto& queue = queuePlaylist();
+    const auto wasEmpty = queue.source->getState().trackCount == 0;
+    const auto added = queue.source->addFiles(expandedFiles);
     if (added <= 0)
         return 0;
 
@@ -210,43 +271,52 @@ int AudioEngine::addFiles(const juce::Array<juce::File>& files, bool startPlayba
     savePlaylist();
     notifyState();
 
-    if (wasEmpty && startPlaybackIfEmpty)
+    if (wasEmpty && startPlaybackIfEmpty && activePlaylist == &queue)
         play();
 
     return added;
 }
 
-int AudioEngine::replacePlaylistAndPlay(const juce::Array<juce::File>& files)
+int AudioEngine::playAlbumPlaylist(const juce::String& playlistId,
+                                   const juce::String& playlistName,
+                                   const juce::Array<juce::File>& files)
 {
-    if (files.isEmpty())
+    if (playlistId.isEmpty() || files.isEmpty())
         return 0;
 
-    int playableFiles = 0;
-    for (const auto& file : files)
+    auto* context = findPlaylist(playlistId);
+    if (context == nullptr)
     {
-        if (file.existsAsFile())
-        {
-            std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
-            if (reader != nullptr)
-                ++playableFiles;
-        }
+        auto created = createPlaylistContext(playlistId, playlistName);
+        context = created.get();
+        playlists.push_back(std::move(created));
     }
 
-    if (playableFiles == 0)
+    context->name = playlistName;
+    context->source->clear();
+    const auto added = context->source->addFiles(files);
+    if (added <= 0)
         return 0;
 
-    clearPlaylist();
-    return addFiles(files, true);
+    for (const auto& file : files)
+        scheduleMetadataRead(file);
+
+    switchToPlaylist(*context);
+    context->source->selectTrack(0);
+    savePlaylist();
+    play();
+    return added;
 }
 
 bool AudioEngine::removeTrack(int index)
 {
-    const auto stateBefore = playlistSource.getState();
-    const auto removed = playlistSource.removeTrack(index);
+    auto& queue = queuePlaylist();
+    const auto stateBefore = queue.source->getState();
+    const auto removed = queue.source->removeTrack(index);
     if (!removed)
         return false;
 
-    if (stateBefore.trackCount == 1)
+    if (stateBefore.trackCount == 1 && activePlaylist == &queue)
         transportSource.stop();
 
     if (juce::isPositiveAndBelow(index, stateBefore.trackPaths.size()))
@@ -262,20 +332,37 @@ bool AudioEngine::removeTrack(int index)
 
 void AudioEngine::clearPlaylist()
 {
-    transportSource.stop();
-    playlistSource.clear();
+    auto& queue = queuePlaylist();
+    const auto removedPaths = queue.source->getState().trackPaths;
+
+    if (activePlaylist == &queue)
+    {
+        transportSource.stop();
+        stopPositionTimer();
+    }
+
+    queue.source->clear();
+
     {
         const juce::ScopedLock sl(metadataLock);
-        metadataByPath.clear();
+        for (const auto& path : removedPaths)
+            metadataByPath.erase(path.toStdString());
     }
-    stopPositionTimer();
+
     savePlaylist();
     notifyState();
 }
 
 void AudioEngine::playTrack(int index)
 {
-    if (!playlistSource.selectTrack(index))
+    auto& queue = queuePlaylist();
+    switchToPlaylist(queue);
+    playActiveTrack(index);
+}
+
+void AudioEngine::playActiveTrack(int index)
+{
+    if (!activeSource().selectTrack(index))
         return;
 
     transportSource.start();
@@ -285,24 +372,29 @@ void AudioEngine::playTrack(int index)
 
 void AudioEngine::setRepeatMode(RepeatMode mode)
 {
-    playlistSource.setRepeatMode(mode);
+    currentRepeatMode = mode;
+    for (const auto& playlist : playlists)
+        playlist->source->setRepeatMode(mode);
     notifyState();
 }
 
 void AudioEngine::setGaplessPlayback(bool shouldBeGapless)
 {
-    playlistSource.setGaplessPlayback(shouldBeGapless);
+    currentGaplessPlayback = shouldBeGapless;
+    for (const auto& playlist : playlists)
+        playlist->source->setGaplessPlayback(shouldBeGapless);
     notifyState();
 }
 
 void AudioEngine::play()
 {
-    const auto state = playlistSource.getState();
+    auto& source = activeSource();
+    const auto state = source.getState();
     if (state.trackCount == 0)
         return;
 
     if (state.isAtEnd && state.repeatMode == RepeatMode::off)
-        playlistSource.resetCurrentTrack();
+        source.resetCurrentTrack();
 
     transportSource.start();
     startPositionTimer();
@@ -319,7 +411,7 @@ void AudioEngine::pause()
 void AudioEngine::stop()
 {
     transportSource.stop();
-    playlistSource.resetCurrentTrack();
+    activeSource().resetCurrentTrack();
     stopPositionTimer();
     notifyState();
 }
@@ -334,7 +426,7 @@ void AudioEngine::togglePlayPause()
 
 void AudioEngine::playPrevious()
 {
-    const auto state = playlistSource.getState();
+    const auto state = activeSource().getState();
     if (!juce::isPositiveAndBelow(state.currentTrackIndex, state.trackCount))
         return;
 
@@ -356,12 +448,12 @@ void AudioEngine::playPrevious()
         previousIndex = state.trackCount - 1;
     }
 
-    playTrack(previousIndex);
+    playActiveTrack(previousIndex);
 }
 
 void AudioEngine::playNext()
 {
-    const auto state = playlistSource.getState();
+    const auto state = activeSource().getState();
     if (!juce::isPositiveAndBelow(state.currentTrackIndex, state.trackCount))
         return;
 
@@ -377,15 +469,15 @@ void AudioEngine::playNext()
         nextIndex = 0;
     }
 
-    playTrack(nextIndex);
+    playActiveTrack(nextIndex);
 }
 
 void AudioEngine::setPosition(double seconds)
 {
-    const auto state = playlistSource.getState();
+    const auto state = activeSource().getState();
     const auto samples = static_cast<int64>(std::llround(
         juce::jmax(0.0, seconds) * state.sampleRate));
-    playlistSource.setCurrentTrackPosition(samples);
+    activeSource().setCurrentTrackPosition(samples);
     notifyState();
 }
 
@@ -401,23 +493,27 @@ int AudioEngine::readAnalysisSamples(float* destination, int maxSamples)
 
 AudioEngine::State AudioEngine::getState() const
 {
-    const auto playlistState = playlistSource.getState();
+    const auto activeState = activeSource().getState();
+    const auto queueState = queuePlaylist().source->getState();
     State s;
-    s.hasFile = playlistState.trackCount > 0;
+    s.hasFile = activeState.trackCount > 0;
     s.isPlaying = transportSource.isPlaying();
-    s.positionSeconds = playlistState.sampleRate > 0.0
-                      ? static_cast<double>(playlistState.currentPositionSamples) / playlistState.sampleRate
+    s.positionSeconds = activeState.sampleRate > 0.0
+                      ? static_cast<double>(activeState.currentPositionSamples) / activeState.sampleRate
                       : 0.0;
-    s.lengthSeconds = playlistState.sampleRate > 0.0
-                    ? static_cast<double>(playlistState.currentLengthSamples) / playlistState.sampleRate
+    s.lengthSeconds = activeState.sampleRate > 0.0
+                    ? static_cast<double>(activeState.currentLengthSamples) / activeState.sampleRate
                     : 0.0;
-    s.fileName = playlistState.currentFileName;
-    s.filePath = playlistState.currentFilePath;
-    s.currentTrackIndex = playlistState.currentTrackIndex;
-    s.repeatMode = playlistState.repeatMode;
-    s.gaplessPlayback = playlistState.gaplessPlayback;
-    s.playlistNames = playlistState.trackNames;
-    s.playlistPaths = playlistState.trackPaths;
+    s.fileName = activeState.currentFileName;
+    s.filePath = activeState.currentFilePath;
+    s.currentTrackIndex = activeState.currentTrackIndex;
+    s.repeatMode = currentRepeatMode;
+    s.gaplessPlayback = currentGaplessPlayback;
+    s.activePlaylistId = activePlaylist->id;
+    s.activePlaylistName = activePlaylist->name;
+    s.queueIsActive = activePlaylist == &queuePlaylist();
+    s.playlistNames = queueState.trackNames;
+    s.playlistPaths = queueState.trackPaths;
 
     {
         const juce::ScopedLock sl(metadataLock);
@@ -426,6 +522,10 @@ AudioEngine::State AudioEngine::getState() const
             const auto found = metadataByPath.find(path.toStdString());
             s.playlistMetadata.push_back(found != metadataByPath.end() ? found->second : nullptr);
         }
+
+        const auto current = metadataByPath.find(s.filePath.toStdString());
+        if (current != metadataByPath.end())
+            s.currentTrackMetadata = current->second;
     }
 
     return s;
@@ -486,20 +586,53 @@ void AudioEngine::restorePlaylist()
     if (settings == nullptr)
         return;
 
-    juce::Array<juce::File> files;
-    juce::StringArray paths;
-    paths.addLines(settings->getValue("playlistPaths"));
-
-    for (const auto& path : paths)
+    const auto loadExistingFiles = [](const juce::String& value)
     {
-        const auto trimmedPath = path.trim();
-        const juce::File file(trimmedPath);
-        if (trimmedPath.isNotEmpty() && file.existsAsFile())
-            files.add(file);
+        juce::Array<juce::File> files;
+        juce::StringArray paths;
+        paths.addLines(value);
+
+        for (const auto& path : paths)
+        {
+            const auto trimmedPath = path.trim();
+            const juce::File file(trimmedPath);
+            if (trimmedPath.isNotEmpty() && file.existsAsFile())
+                files.add(file);
+        }
+
+        return files;
+    };
+
+    auto& queue = queuePlaylist();
+    const auto queueFiles = loadExistingFiles(settings->getValue("playlistPaths"));
+    if (!queueFiles.isEmpty())
+    {
+        queue.source->addFiles(queueFiles);
+        for (const auto& file : queueFiles)
+            scheduleMetadataRead(file);
     }
 
-    if (!files.isEmpty())
-        addFiles(files, false);
+    juce::StringArray albumIds;
+    albumIds.addLines(settings->getValue("albumPlaylistIds"));
+    for (const auto& rawId : albumIds)
+    {
+        const auto id = rawId.trim();
+        if (id.isEmpty())
+            continue;
+
+        const auto files = loadExistingFiles(settings->getValue("albumPlaylist." + id));
+        if (files.isEmpty())
+            continue;
+
+        auto context = createPlaylistContext(id, settings->getValue("albumPlaylistName." + id, id));
+        context->source->addFiles(files);
+        for (const auto& file : files)
+            scheduleMetadataRead(file);
+        playlists.push_back(std::move(context));
+    }
+
+    if (auto* saved = findPlaylist(settings->getValue("activePlaylistId")))
+        switchToPlaylist(*saved);
 
     // Remove paths for files that no longer exist.
     savePlaylist();
@@ -511,8 +644,30 @@ void AudioEngine::savePlaylist()
     if (settings == nullptr)
         return;
 
-    const auto state = playlistSource.getState();
-    settings->setValue("playlistPaths", state.trackPaths.joinIntoString("\n"));
+    settings->setValue("playlistPaths",
+                       queuePlaylist().source->getState().trackPaths.joinIntoString("\n"));
+
+    const auto properties = settings->getAllProperties();
+    for (const auto& key : properties.getAllKeys())
+    {
+        if (key.startsWith("albumPlaylist."))
+            settings->removeValue(key);
+    }
+
+    juce::StringArray albumIds;
+    for (const auto& playlist : playlists)
+    {
+        if (playlist.get() == &queuePlaylist())
+            continue;
+
+        albumIds.add(playlist->id);
+        settings->setValue("albumPlaylist." + playlist->id,
+                           playlist->source->getState().trackPaths.joinIntoString("\n"));
+        settings->setValue("albumPlaylistName." + playlist->id, playlist->name);
+    }
+
+    settings->setValue("albumPlaylistIds", albumIds.joinIntoString("\n"));
+    settings->setValue("activePlaylistId", activePlaylist->id);
     applicationProperties.saveIfNeeded();
 }
 

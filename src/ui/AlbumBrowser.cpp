@@ -38,7 +38,7 @@ void drawCover(juce::Graphics& g,
         return;
 
     juce::Path clip;
-    clip.addRoundedRectangle(bounds, 12.0f);
+    clip.addRoundedRectangle(bounds, 8.0f);
     g.saveState();
     g.reduceClipRegion(clip);
 
@@ -92,9 +92,9 @@ public:
     {
         const auto bounds = getLocalBounds().toFloat();
         g.setColour(GlassLookAndFeel::glassFill());
-        g.fillRoundedRectangle(bounds, 12.0f);
+        g.fillRoundedRectangle(bounds, 8.0f);
         g.setColour(GlassLookAndFeel::glassStroke());
-        g.drawRoundedRectangle(bounds, 12.0f, 1.0f);
+        g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
 
         const auto cover = bounds.reduced(10.0f).withTrimmedBottom(bounds.getHeight() - 138.0f);
         drawCover(g, cover, album.artwork, album.id);
@@ -215,7 +215,7 @@ public:
             g.fillRoundedRectangle(4.0f, 3.0f,
                                    static_cast<float>(width - 8),
                                    static_cast<float>(height - 6),
-                                   8.0f);
+                                   6.0f);
         }
 
         const auto number = track.trackNumber > 0 ? juce::String(track.trackNumber)

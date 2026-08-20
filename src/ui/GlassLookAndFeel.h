@@ -31,8 +31,8 @@ public:
     juce::Font getLabelFont(juce::Label&) override;
 
     static juce::Colour glassFill() { return juce::Colour(0xffffffff); }
-    static juce::Colour glassStroke() { return juce::Colour(0xffdfe5ef); }
-    static juce::Colour inkPrimary() { return juce::Colour(0xff1d2433); }
-    static juce::Colour inkMuted() { return juce::Colour(0xff758098); }
-    static juce::Colour accent() { return juce::Colour(0xff3867d6); }
+    static juce::Colour glassStroke() { return juce::Colour(0xffd9ded8); }
+    static juce::Colour inkPrimary() { return juce::Colour(0xff182019); }
+    static juce::Colour inkMuted() { return juce::Colour(0xff70776f); }
+    static juce::Colour accent() { return juce::Colour(0xff19241d); }
 };

@@ -26,6 +26,10 @@ public:
         int currentTrackIndex = -1;
         RepeatMode repeatMode = RepeatMode::playlist;
         bool gaplessPlayback = true;
+        juce::String activePlaylistId;
+        juce::String activePlaylistName;
+        bool queueIsActive = true;
+        TrackMetadataPtr currentTrackMetadata;
         juce::StringArray playlistNames;
         juce::StringArray playlistPaths;
         std::vector<TrackMetadataPtr> playlistMetadata;
@@ -37,7 +41,9 @@ public:
     ~AudioEngine() override;
 
     int addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty = true);
-    int replacePlaylistAndPlay(const juce::Array<juce::File>& files);
+    int playAlbumPlaylist(const juce::String& playlistId,
+                          const juce::String& playlistName,
+                          const juce::Array<juce::File>& files);
     bool removeTrack(int index);
     void clearPlaylist();
     void playTrack(int index);
@@ -58,6 +64,13 @@ public:
     void setStateCallback(StateCallback cb);
 
 private:
+    struct PlaylistContext
+    {
+        juce::String id;
+        juce::String name;
+        std::unique_ptr<GaplessPlaylistSource> source;
+    };
+
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void notifyState();
     void startPositionTimer();
@@ -68,12 +81,25 @@ private:
     void scheduleMetadataRead(const juce::File& file);
     void metadataReady(TrackMetadata metadata);
 
+    std::unique_ptr<PlaylistContext> createPlaylistContext(const juce::String& id,
+                                                           const juce::String& name);
+    PlaylistContext& queuePlaylist();
+    const PlaylistContext& queuePlaylist() const;
+    PlaylistContext* findPlaylist(const juce::String& id);
+    GaplessPlaylistSource& activeSource();
+    const GaplessPlaylistSource& activeSource() const;
+    void switchToPlaylist(PlaylistContext& context);
+    void playActiveTrack(int index);
+
     class AnalysisAudioSource;
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioFormatManager formatManager;
     juce::TimeSliceThread readAheadThread;
-    GaplessPlaylistSource playlistSource;
+    std::vector<std::unique_ptr<PlaylistContext>> playlists;
+    PlaylistContext* activePlaylist = nullptr;
+    RepeatMode currentRepeatMode = RepeatMode::playlist;
+    bool currentGaplessPlayback = true;
     juce::AudioTransportSource transportSource;
     std::unique_ptr<AnalysisAudioSource> analysisSource;
     juce::AudioSourcePlayer sourcePlayer;
