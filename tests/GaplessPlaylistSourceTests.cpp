@@ -1,6 +1,8 @@
 #include <JuceHeader.h>
 #include "audio/GaplessPlaylistSource.h"
 #include "audio/TrackMetadata.h"
+#include "library/MusicLibrary.h"
+#include "ui/AlbumBrowser.h"
 
 #include <cmath>
 #include <cstdio>
@@ -52,10 +54,137 @@ bool verifyValue(const juce::AudioBuffer<float>& buffer,
 
     return true;
 }
+
+bool writeCoverPng(const juce::File& file)
+{
+    juce::Image image(juce::Image::RGB, 16, 16, true);
+    juce::Graphics graphics(image);
+    graphics.fillAll(juce::Colours::darkred);
+
+    auto output = file.createOutputStream();
+    if (output == nullptr || !output->openedOk())
+        return false;
+
+    juce::PNGImageFormat format;
+    return format.writeImageToStream(image, *output);
+}
+
+bool testAlbumBrowserGridLayout()
+{
+    MusicLibrary::Album album;
+    album.id = "layout-test-album";
+    album.title = "Layout Test";
+    album.artist = "Test Artist";
+
+    MusicLibrary::State state;
+    state.albums.push_back(album);
+
+    AlbumBrowser browser;
+    browser.setBounds(0, 0, 520, 320);
+    browser.setState(state);
+    browser.showAlbumList();
+
+    auto* viewport = dynamic_cast<juce::Viewport*>(browser.getChildComponent(0));
+    if (!expect(viewport != nullptr, "album browser has a grid viewport"))
+        return false;
+
+    auto* grid = viewport->getViewedComponent();
+    const auto gridWidth = grid != nullptr ? grid->getWidth() : 0;
+    const auto cardWidth = grid != nullptr && grid->getNumChildComponents() > 0
+                         ? grid->getChildComponent(0)->getWidth()
+                         : 0;
+    return expect(gridWidth >= 400, "album grid matches the viewport width")
+        && expect(cardWidth >= 150, "album card remains visible in the grid");
+}
+
+bool testMusicLibrary()
+{
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("closure-music-library-tests");
+    root.deleteRecursively();
+    if (!expect(root.createDirectory(), "create library test directory"))
+        return false;
+
+    const auto albumFolder = root.getChildFile("Test Album");
+    const auto discFolder = albumFolder.getChildFile("Disc 2");
+    if (!expect(albumFolder.createDirectory(), "create album folder")
+        || !expect(discFolder.createDirectory(), "create nested album folder"))
+    {
+        root.deleteRecursively();
+        return false;
+    }
+
+    const auto first = albumFolder.getChildFile("01 First.wav");
+    const auto second = discFolder.getChildFile("01 Second.wav");
+    if (!expect(writeConstantWav(first, 0.25f, 8), "write first library fixture")
+        || !expect(writeConstantWav(second, 0.75f, 8), "write second library fixture"))
+    {
+        root.deleteRecursively();
+        return false;
+    }
+
+    const auto storage = root.getChildFile("storage");
+    juce::String albumId;
+    bool passed = true;
+    {
+        MusicLibrary library(storage);
+        const auto result = library.addAlbum(albumFolder);
+        passed = expect(result.success, "add an album folder")
+              && expect(result.addedTracks == 2, "scan nested album tracks")
+              && expect(library.getState().albums.size() == 1, "library contains one album")
+              && expect(storage.getChildFile("library.xml").existsAsFile(),
+                         "save library to disk");
+
+        const auto state = library.getState();
+        if (!state.albums.empty())
+        {
+            albumId = state.albums.front().id;
+            passed = expect(library.getPlayableFiles(albumId).size() == 2,
+                            "return available album files")
+                  && passed;
+
+            const auto cover = root.getChildFile("cover.png");
+            passed = expect(writeCoverPng(cover), "write album cover fixture") && passed;
+            passed = expect(library.setCustomArtwork(albumId, cover),
+                            "set custom album cover") && passed;
+            const auto coveredState = library.getState();
+            passed = expect(coveredState.albums.front().customArtwork
+                               && coveredState.albums.front().artwork != nullptr,
+                            "keep custom album cover in state") && passed;
+        }
+
+        const auto duplicate = library.addAlbum(albumFolder);
+        passed = expect(!duplicate.success, "reject duplicate album folders") && passed;
+    }
+
+    second.deleteFile();
+    {
+        MusicLibrary restored(storage);
+        const auto state = restored.getState();
+        passed = expect(state.albums.size() == 1, "restore the saved album") && passed;
+        passed = expect(!albumId.isEmpty() && state.albums.front().id == albumId,
+                        "preserve album identity") && passed;
+        passed = expect(state.albums.front().availableTrackCount() == 1,
+                        "preserve missing tracks in the album") && passed;
+        passed = expect(state.albums.front().customArtwork
+                           && state.albums.front().artwork != nullptr,
+                        "restore cached custom cover") && passed;
+        passed = expect(restored.removeAlbum(albumId), "remove the album") && passed;
+        passed = expect(restored.getState().albums.empty(), "remove album from library") && passed;
+    }
+
+    passed = expect(writeConstantWav(second, 0.75f, 8), "restore source fixture") && passed;
+    passed = expect(first.existsAsFile() && second.existsAsFile(),
+                    "removing an album keeps source audio files") && passed;
+    root.deleteRecursively();
+    return passed;
+}
 } // namespace
 
 int main()
 {
+    juce::ScopedJuceInitialiser_GUI juceInitialiser;
+
     juce::StringPairArray metadataValues;
     metadataValues.set("ID3TITLE", "Tagged title");
     metadataValues.set("IART", "Tagged artist");
@@ -74,6 +203,12 @@ int main()
     {
         return 1;
     }
+
+    if (!testMusicLibrary())
+        return 1;
+
+    if (!testAlbumBrowserGridLayout())
+        return 1;
 
     const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
         .getChildFile("closure-gapless-playlist-tests");

@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include "audio/AudioFileFormats.h"
 
 #include <algorithm>
 #include <array>
@@ -7,14 +8,6 @@
 
 namespace
 {
-bool isSupportedAudioFile(const juce::File& file)
-{
-    const auto extension = file.getFileExtension().toLowerCase();
-    return extension == ".mp3" || extension == ".flac" || extension == ".wav"
-        || extension == ".aiff" || extension == ".aif" || extension == ".m4a"
-        || extension == ".alac" || extension == ".ogg";
-}
-
 struct FilePathComparator
 {
     int compareElements(const juce::File& first, const juce::File& second) const
@@ -31,7 +24,7 @@ juce::Array<juce::File> expandAudioInputs(const juce::Array<juce::File>& inputs)
     {
         if (input.existsAsFile())
         {
-            if (isSupportedAudioFile(input))
+            if (AudioFileFormats::isSupported(input))
                 expanded.add(input);
             continue;
         }
@@ -46,7 +39,7 @@ juce::Array<juce::File> expandAudioInputs(const juce::Array<juce::File>& inputs)
 
         for (const auto& child : children)
         {
-            if (isSupportedAudioFile(child))
+            if (AudioFileFormats::isSupported(child))
                 expanded.add(child);
         }
     }
@@ -221,6 +214,29 @@ int AudioEngine::addFiles(const juce::Array<juce::File>& files, bool startPlayba
         play();
 
     return added;
+}
+
+int AudioEngine::replacePlaylistAndPlay(const juce::Array<juce::File>& files)
+{
+    if (files.isEmpty())
+        return 0;
+
+    int playableFiles = 0;
+    for (const auto& file : files)
+    {
+        if (file.existsAsFile())
+        {
+            std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+            if (reader != nullptr)
+                ++playableFiles;
+        }
+    }
+
+    if (playableFiles == 0)
+        return 0;
+
+    clearPlaylist();
+    return addFiles(files, true);
 }
 
 bool AudioEngine::removeTrack(int index)

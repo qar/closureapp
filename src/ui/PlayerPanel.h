@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 #include "audio/AudioEngine.h"
+#include "library/MusicLibrary.h"
+#include "ui/AlbumBrowser.h"
 #include "ui/GlassLookAndFeel.h"
 
 #include <array>
@@ -11,16 +13,25 @@ class PlayerPanel final : public juce::Component,
                           private juce::Timer
 {
 public:
-    explicit PlayerPanel(AudioEngine& engine);
+    PlayerPanel(AudioEngine& engine, MusicLibrary& library);
     ~PlayerPanel() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
 
     void applyState(const AudioEngine::State& state);
+    void applyLibraryState(const MusicLibrary::State& state);
 
 private:
     void openFileChooser();
+    void openAlbumChooser();
+    void chooseAlbumArtwork(const juce::String& albumId);
+    void editAlbum(const juce::String& albumId);
+    void playAlbum(const juce::String& albumId);
+    void addAlbumToQueue(const juce::String& albumId);
+    void removeAlbum(const juce::String& albumId);
+    void showAlbumView();
+    void showQueueView();
     void seekFromSlider();
     void rebuildPlaylistRows();
     void updateControlLabels();
@@ -55,7 +66,9 @@ private:
     void listBoxItemClicked(int rowNumber, const juce::MouseEvent&) override;
 
     AudioEngine& audioEngine;
+    MusicLibrary& musicLibrary;
     GlassLookAndFeel lookAndFeel;
+    AlbumBrowser albumBrowser;
 
     juce::Label appTitleLabel;
     juce::Label appSubtitleLabel;
@@ -70,7 +83,10 @@ private:
 
     juce::ListBox playlistList;
     juce::TextButton addButton { "Add music" };
+    juce::TextButton addAlbumButton { "Add album" };
     juce::TextButton clearButton { "Clear" };
+    juce::TextButton albumsViewButton { "Albums" };
+    juce::TextButton queueViewButton { "Queue" };
     juce::TextButton previousButton { "Prev" };
     juce::TextButton playButton { "Play" };
     juce::TextButton stopButton { "Stop" };
@@ -89,7 +105,9 @@ private:
 
     bool isSeeking = false;
     bool showSpectrum = false;
+    bool showingAlbums = false;
     AudioEngine::State currentState;
+    MusicLibrary::State libraryState;
     std::vector<int> visibleTrackIndices;
     juce::dsp::FFT spectrumFft;
     juce::dsp::WindowingFunction<float> spectrumWindow;

@@ -6,21 +6,41 @@
 
 namespace
 {
+int parseNumber(const juce::String& value)
+{
+    return value.upToFirstOccurrenceOf("/", false, false).trim().getIntValue();
+}
+}
+
+namespace
+{
 void applyFallback(TrackMetadata& metadata, const juce::StringPairArray& values)
 {
     const auto title = TrackMetadataUtil::firstValue(values, { "id3title", "INAM" });
     const auto artist = TrackMetadataUtil::firstValue(values, { "id3artist", "IART" });
+    const auto albumArtist = TrackMetadataUtil::firstValue(values,
+                                                           { "id3albumartist", "TPE2", "aART" });
     const auto album = TrackMetadataUtil::firstValue(values, { "id3album", "IPRD" });
     const auto genre = TrackMetadataUtil::firstValue(values, { "id3genre", "GENR" });
+    const auto discNumber = TrackMetadataUtil::firstValue(values,
+                                                          { "id3discnumber", "TPOS", "DISK" });
+    const auto trackNumber = TrackMetadataUtil::firstValue(values,
+                                                           { "id3tracknumber", "TRCK", "TRACK" });
 
     if (title.isNotEmpty())
         metadata.title = title;
     if (artist.isNotEmpty())
         metadata.artist = artist;
+    if (albumArtist.isNotEmpty())
+        metadata.albumArtist = albumArtist;
     if (album.isNotEmpty())
         metadata.album = album;
     if (genre.isNotEmpty())
         metadata.genre = genre;
+    if (discNumber.isNotEmpty())
+        metadata.discNumber = parseNumber(discNumber);
+    if (trackNumber.isNotEmpty())
+        metadata.trackNumber = parseNumber(trackNumber);
 }
 
 void applyCommonMetadata(TrackMetadata& metadata, NSArray<AVMetadataItem*>* items)
@@ -36,6 +56,11 @@ void applyCommonMetadata(TrackMetadata& metadata, NSArray<AVMetadataItem*>* item
                  && item.stringValue.length > 0)
         {
             metadata.artist = juce::String::fromUTF8(item.stringValue.UTF8String);
+        }
+        else if ([item.identifier isEqualToString:AVMetadataIdentifieriTunesMetadataAlbumArtist]
+                 && item.stringValue.length > 0)
+        {
+            metadata.albumArtist = juce::String::fromUTF8(item.stringValue.UTF8String);
         }
         else if ([item.commonKey isEqualToString:AVMetadataCommonKeyAlbumName]
                  && item.stringValue.length > 0)

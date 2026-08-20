@@ -1,4 +1,5 @@
 #include "PlayerPanel.h"
+#include "audio/AudioFileFormats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -63,8 +64,9 @@ juce::Colour artworkColour(const juce::String& key)
 }
 }
 
-PlayerPanel::PlayerPanel(AudioEngine& engine)
+PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     : audioEngine(engine),
+      musicLibrary(library),
       spectrumFft(spectrumOrder),
       spectrumWindow(spectrumSize, juce::dsp::WindowingFunction<float>::hann)
 {
@@ -110,10 +112,25 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     addButton.setName("Add audio files or folders");
     addButton.onClick = [this] { openFileChooser(); };
 
+    addAlbumButton.setComponentID("control");
+    addAlbumButton.setTooltip("Add an album folder");
+    addAlbumButton.setName("Add an album folder");
+    addAlbumButton.onClick = [this] { openAlbumChooser(); };
+
     clearButton.setComponentID("quiet");
     clearButton.setTooltip("Clear the playlist");
     clearButton.setName("Clear playlist");
     clearButton.onClick = [this] { audioEngine.clearPlaylist(); };
+
+    albumsViewButton.setComponentID("option");
+    albumsViewButton.setTooltip("Show albums");
+    albumsViewButton.setName("Show albums");
+    albumsViewButton.onClick = [this] { showAlbumView(); };
+
+    queueViewButton.setComponentID("option");
+    queueViewButton.setTooltip("Show queue");
+    queueViewButton.setName("Show queue");
+    queueViewButton.onClick = [this] { showQueueView(); };
 
     previousButton.setComponentID("control");
     previousButton.setTooltip("Previous track");
@@ -177,7 +194,10 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     };
 
     addAndMakeVisible(addButton);
+    addAndMakeVisible(addAlbumButton);
     addAndMakeVisible(clearButton);
+    addAndMakeVisible(albumsViewButton);
+    addAndMakeVisible(queueViewButton);
     addAndMakeVisible(previousButton);
     addAndMakeVisible(playButton);
     addAndMakeVisible(stopButton);
@@ -193,6 +213,28 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     playlistList.setOutlineThickness(0);
     playlistList.setMultipleSelectionEnabled(false);
     addAndMakeVisible(playlistList);
+
+    albumBrowser.setPlayAlbumCallback([this](const juce::String& albumId)
+    {
+        playAlbum(albumId);
+    });
+    albumBrowser.setAddToQueueCallback([this](const juce::String& albumId)
+    {
+        addAlbumToQueue(albumId);
+    });
+    albumBrowser.setChooseArtworkCallback([this](const juce::String& albumId)
+    {
+        chooseAlbumArtwork(albumId);
+    });
+    albumBrowser.setEditAlbumCallback([this](const juce::String& albumId)
+    {
+        editAlbum(albumId);
+    });
+    albumBrowser.setRemoveAlbumCallback([this](const juce::String& albumId)
+    {
+        removeAlbum(albumId);
+    });
+    addAndMakeVisible(albumBrowser);
 
     emptyStateLabel.setVisible(true);
 
@@ -219,6 +261,7 @@ PlayerPanel::PlayerPanel(AudioEngine& engine)
     addAndMakeVisible(volumeSlider);
 
     updateControlLabels();
+    showQueueView();
     startTimerHz(30);
 }
 
@@ -260,8 +303,10 @@ void PlayerPanel::resized()
 #endif
 
     auto header = panelBounds.removeFromTop(headerHeight);
-    auto headerActions = header.removeFromRight(214);
+    auto headerActions = header.removeFromRight(370);
     clearButton.setBounds(headerActions.removeFromRight(76).withSizeKeepingCentre(76, 34));
+    headerActions.removeFromRight(10);
+    addAlbumButton.setBounds(headerActions.removeFromRight(128).withSizeKeepingCentre(128, 34));
     headerActions.removeFromRight(10);
     addButton.setBounds(headerActions.removeFromRight(128).withSizeKeepingCentre(128, 34));
 
@@ -291,9 +336,14 @@ void PlayerPanel::resized()
     auto playlistArea = playlistBounds.reduced(20, 18);
     auto playlistHeader = playlistArea.removeFromTop(32);
     playlistInfoLabel.setBounds(playlistHeader.removeFromRight(92));
+    auto viewButtons = playlistHeader.removeFromRight(150);
+    queueViewButton.setBounds(viewButtons.removeFromRight(72).withSizeKeepingCentre(68, 28));
+    viewButtons.removeFromRight(6);
+    albumsViewButton.setBounds(viewButtons.removeFromRight(72).withSizeKeepingCentre(68, 28));
     playlistLabel.setBounds(playlistHeader);
     playlistArea.removeFromTop(10);
     playlistList.setBounds(playlistArea);
+    albumBrowser.setBounds(playlistArea);
     emptyStateLabel.setBounds(playlistArea.reduced(16, 12));
 
     auto transport = transportBounds.reduced(18, 14);
@@ -344,11 +394,14 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
         currentAlbumLabel.setText("", juce::dontSendNotification);
     }
 
-    playlistInfoLabel.setText(juce::String(currentState.playlistPaths.size())
-                                  + (currentState.playlistPaths.size() == 1 ? " track" : " tracks"),
-                              juce::dontSendNotification);
+    if (!showingAlbums)
+    {
+        playlistInfoLabel.setText(juce::String(currentState.playlistPaths.size())
+                                      + (currentState.playlistPaths.size() == 1 ? " track" : " tracks"),
+                                  juce::dontSendNotification);
+    }
 
-    emptyStateLabel.setVisible(currentState.playlistPaths.isEmpty());
+    emptyStateLabel.setVisible(!showingAlbums && currentState.playlistPaths.isEmpty());
     updateControlLabels();
 
     playlistList.updateContent();
@@ -371,24 +424,209 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
     repaint();
 }
 
+void PlayerPanel::applyLibraryState(const MusicLibrary::State& state)
+{
+    libraryState = state;
+    albumBrowser.setState(state);
+    if (showingAlbums)
+    {
+        playlistInfoLabel.setText(juce::String(libraryState.albums.size())
+                                      + (libraryState.albums.size() == 1 ? " album" : " albums"),
+                                  juce::dontSendNotification);
+    }
+}
+
 void PlayerPanel::openFileChooser()
 {
     auto chooser = std::make_shared<juce::FileChooser>(
         "Add audio files or folders",
         juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-        "*.mp3;*.flac;*.wav;*.aiff;*.aif;*.m4a;*.alac;*.ogg");
+        AudioFileFormats::wildcardPattern());
 
     const auto flags = juce::FileBrowserComponent::openMode
                      | juce::FileBrowserComponent::canSelectFiles
                      | juce::FileBrowserComponent::canSelectDirectories
                      | juce::FileBrowserComponent::canSelectMultipleItems;
 
-    chooser->launchAsync(flags, [this, chooser](const juce::FileChooser& fileChooser)
+    const juce::Component::SafePointer<PlayerPanel> safePanel { this };
+    chooser->launchAsync(flags, [safePanel, chooser](const juce::FileChooser& fileChooser)
     {
         const auto selected = fileChooser.getResults();
-        if (!selected.isEmpty())
-            audioEngine.addFiles(selected);
+        if (safePanel != nullptr && !selected.isEmpty())
+            safePanel->audioEngine.addFiles(selected);
     });
+}
+
+void PlayerPanel::openAlbumChooser()
+{
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Add album folder",
+        juce::File::getSpecialLocation(juce::File::userMusicDirectory));
+
+    const auto flags = juce::FileBrowserComponent::openMode
+                     | juce::FileBrowserComponent::canSelectDirectories;
+    const juce::Component::SafePointer<PlayerPanel> safePanel { this };
+    chooser->launchAsync(flags, [safePanel, chooser](const juce::FileChooser& fileChooser)
+    {
+        const auto selected = fileChooser.getResult();
+        if (safePanel == nullptr || selected == juce::File{})
+            return;
+
+        safePanel->addAlbumButton.setEnabled(false);
+        safePanel->musicLibrary.addAlbumAsync(selected, [safePanel](MusicLibrary::AddResult result)
+        {
+            if (safePanel == nullptr)
+                return;
+
+            safePanel->addAlbumButton.setEnabled(true);
+
+            if (!result.success)
+            {
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                                       "Add album",
+                                                       result.error);
+                return;
+            }
+
+            safePanel->showAlbumView();
+            if (result.skippedTracks > 0)
+            {
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon,
+                    "Add album",
+                    juce::String(result.addedTracks) + " tracks added, "
+                        + juce::String(result.skippedTracks) + " tracks skipped.");
+            }
+        });
+    });
+}
+
+void PlayerPanel::chooseAlbumArtwork(const juce::String& albumId)
+{
+    auto chooser = std::make_shared<juce::FileChooser>(
+        "Choose album cover",
+        juce::File::getSpecialLocation(juce::File::userPicturesDirectory),
+        "*.png;*.jpg;*.jpeg");
+
+    const auto flags = juce::FileBrowserComponent::openMode
+                     | juce::FileBrowserComponent::canSelectFiles;
+    const juce::Component::SafePointer<PlayerPanel> safePanel { this };
+    chooser->launchAsync(flags, [safePanel, chooser, albumId](const juce::FileChooser& fileChooser)
+    {
+        const auto selected = fileChooser.getResult();
+        if (safePanel == nullptr || selected == juce::File{})
+            return;
+
+        if (!safePanel->musicLibrary.setCustomArtwork(albumId, selected))
+        {
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                                   "Album cover",
+                                                   "The selected image could not be loaded.");
+        }
+    });
+}
+
+void PlayerPanel::editAlbum(const juce::String& albumId)
+{
+    const auto album = musicLibrary.getAlbum(albumId);
+    if (!album.has_value())
+        return;
+
+    auto* editor = new juce::AlertWindow("Edit album",
+                                         "Update album details",
+                                         juce::AlertWindow::NoIcon);
+    editor->addTextEditor("title", album->title, "Title");
+    editor->addTextEditor("artist", album->artist, "Artist");
+    editor->addButton("Save", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    editor->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+
+    const juce::Component::SafePointer<PlayerPanel> safePanel { this };
+    editor->enterModalState(true,
+                            juce::ModalCallbackFunction::create(
+                                [safePanel, editor, albumId](int result)
+                                {
+                                    if (result == 1 && safePanel != nullptr)
+                                    {
+                                        const auto title = editor->getTextEditorContents("title");
+                                        const auto artist = editor->getTextEditorContents("artist");
+                                        if (!safePanel->musicLibrary.renameAlbum(albumId, title, artist))
+                                        {
+                                            juce::AlertWindow::showMessageBoxAsync(
+                                                juce::MessageBoxIconType::WarningIcon,
+                                                "Edit album",
+                                                "Album title and artist cannot be empty.");
+                                        }
+                                    }
+
+                                    delete editor;
+                                }),
+                            false);
+}
+
+void PlayerPanel::playAlbum(const juce::String& albumId)
+{
+    const auto files = musicLibrary.getPlayableFiles(albumId);
+    if (files.isEmpty())
+    {
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                               "Play album",
+                                               "This album has no available audio files.");
+        return;
+    }
+
+    if (audioEngine.replacePlaylistAndPlay(files) <= 0)
+    {
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
+                                               "Play album",
+                                               "The album could not be loaded for playback.");
+        return;
+    }
+
+    showQueueView();
+}
+
+void PlayerPanel::addAlbumToQueue(const juce::String& albumId)
+{
+    const auto files = musicLibrary.getPlayableFiles(albumId);
+    if (files.isEmpty())
+        return;
+
+    audioEngine.addFiles(files, false);
+}
+
+void PlayerPanel::removeAlbum(const juce::String& albumId)
+{
+    musicLibrary.removeAlbum(albumId);
+}
+
+void PlayerPanel::showAlbumView()
+{
+    showingAlbums = true;
+    playlistList.setVisible(false);
+    albumBrowser.setVisible(true);
+    emptyStateLabel.setVisible(false);
+    playlistLabel.setText("Albums", juce::dontSendNotification);
+    playlistInfoLabel.setText(juce::String(libraryState.albums.size())
+                                  + (libraryState.albums.size() == 1 ? " album" : " albums"),
+                              juce::dontSendNotification);
+    albumsViewButton.setToggleState(true, juce::dontSendNotification);
+    queueViewButton.setToggleState(false, juce::dontSendNotification);
+    resized();
+}
+
+void PlayerPanel::showQueueView()
+{
+    showingAlbums = false;
+    playlistList.setVisible(true);
+    albumBrowser.setVisible(false);
+    emptyStateLabel.setVisible(currentState.playlistPaths.isEmpty());
+    playlistLabel.setText("Playlist", juce::dontSendNotification);
+    playlistInfoLabel.setText(juce::String(currentState.playlistPaths.size())
+                                  + (currentState.playlistPaths.size() == 1 ? " track" : " tracks"),
+                              juce::dontSendNotification);
+    albumsViewButton.setToggleState(false, juce::dontSendNotification);
+    queueViewButton.setToggleState(true, juce::dontSendNotification);
+    resized();
 }
 
 void PlayerPanel::seekFromSlider()

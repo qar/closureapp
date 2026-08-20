@@ -37,6 +37,7 @@ public:
     ~AudioEngine() override;
 
     int addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty = true);
+    int replacePlaylistAndPlay(const juce::Array<juce::File>& files);
     bool removeTrack(int index);
     void clearPlaylist();
     void playTrack(int index);

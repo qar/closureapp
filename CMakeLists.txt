@@ -26,11 +26,16 @@ target_sources(ClosureApp
         src/MainComponent.cpp
         src/audio/AudioEngine.h
         src/audio/AudioEngine.cpp
+        src/audio/AudioFileFormats.h
         src/audio/GaplessPlaylistSource.h
         src/audio/GaplessPlaylistSource.cpp
         src/audio/TrackMetadata.h
         src/audio/TrackMetadata.cpp
         src/audio/TrackMetadataReader.mm
+        src/library/MusicLibrary.h
+        src/library/MusicLibrary.cpp
+        src/ui/AlbumBrowser.h
+        src/ui/AlbumBrowser.cpp
         src/ui/GlassLookAndFeel.h
         src/ui/GlassLookAndFeel.cpp
         src/ui/PlayerPanel.h
@@ -94,8 +99,14 @@ if(CLOSURE_BUILD_TESTS)
             tests/GaplessPlaylistSourceTests.cpp
             src/audio/GaplessPlaylistSource.h
             src/audio/GaplessPlaylistSource.cpp
+            src/audio/AudioFileFormats.h
             src/audio/TrackMetadata.h
             src/audio/TrackMetadata.cpp
+            src/audio/TrackMetadataReader.mm
+            src/library/MusicLibrary.h
+            src/library/MusicLibrary.cpp
+            src/ui/AlbumBrowser.h
+            src/ui/AlbumBrowser.cpp
     )
 
     target_include_directories(ClosureAudioTests PRIVATE src)
@@ -114,10 +125,15 @@ if(CLOSURE_BUILD_TESTS)
             juce::juce_audio_formats
             juce::juce_core
             juce::juce_graphics
+            juce::juce_gui_basics
         PUBLIC
             juce::juce_recommended_config_flags
-            juce::juce_recommended_warning_flags
+             juce::juce_recommended_warning_flags
     )
+
+    if(APPLE)
+        target_link_libraries(ClosureAudioTests PRIVATE "-framework AVFoundation")
+    endif()
 
     add_test(NAME ClosureAudioTests COMMAND ClosureAudioTests)
 endif()

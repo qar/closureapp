@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include "audio/AudioEngine.h"
+#include "library/MusicLibrary.h"
 #include "ui/PlayerPanel.h"
 
 class MainComponent final : public juce::Component,
@@ -18,6 +19,7 @@ public:
     void filesDropped(const juce::StringArray& files, int x, int y) override;
 
 private:
+    MusicLibrary musicLibrary;
     AudioEngine audioEngine;
     PlayerPanel playerPanel;
 

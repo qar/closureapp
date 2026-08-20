@@ -15,6 +15,8 @@ struct TrackMetadata
     juce::String album;
     juce::String albumArtist;
     juce::String genre;
+    int discNumber = 0;
+    int trackNumber = 0;
     double durationSeconds = 0.0;
     std::shared_ptr<const juce::Image> artwork;
 

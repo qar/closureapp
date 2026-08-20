@@ -1,7 +1,8 @@
 #include "MainComponent.h"
+#include "audio/AudioFileFormats.h"
 
 MainComponent::MainComponent()
-    : playerPanel(audioEngine)
+    : playerPanel(audioEngine, musicLibrary)
 {
     setOpaque(true);
     setSize(1040, 700);
@@ -17,12 +18,23 @@ MainComponent::MainComponent()
         });
     });
 
+    musicLibrary.setStateCallback([safePanel](const MusicLibrary::State& state)
+    {
+        juce::MessageManager::callAsync([safePanel, state]
+        {
+            if (safePanel != nullptr)
+                safePanel->applyLibraryState(state);
+        });
+    });
+
     playerPanel.applyState(audioEngine.getState());
+    playerPanel.applyLibraryState(musicLibrary.getState());
 }
 
 MainComponent::~MainComponent()
 {
     audioEngine.setStateCallback(nullptr);
+    musicLibrary.setStateCallback(nullptr);
 }
 
 void MainComponent::paint(juce::Graphics& g)
@@ -43,9 +55,7 @@ bool MainComponent::isInterestedInFileDrag(const juce::StringArray& files)
         if (f.isDirectory())
             return true;
 
-        const auto ext = f.getFileExtension().toLowerCase();
-        if (ext == ".mp3" || ext == ".flac" || ext == ".wav" || ext == ".aiff"
-            || ext == ".aif" || ext == ".m4a" || ext == ".alac" || ext == ".ogg")
+        if (AudioFileFormats::isSupported(f))
             return true;
     }
     return false;
