@@ -279,7 +279,8 @@ int AudioEngine::addFiles(const juce::Array<juce::File>& files, bool startPlayba
 
 int AudioEngine::playAlbumPlaylist(const juce::String& playlistId,
                                    const juce::String& playlistName,
-                                   const juce::Array<juce::File>& files)
+                                   const juce::Array<juce::File>& files,
+                                   int startTrackIndex)
 {
     if (playlistId.isEmpty() || files.isEmpty())
         return 0;
@@ -302,7 +303,7 @@ int AudioEngine::playAlbumPlaylist(const juce::String& playlistId,
         scheduleMetadataRead(file);
 
     switchToPlaylist(*context);
-    context->source->selectTrack(0);
+    context->source->selectTrack(juce::jlimit(0, added - 1, startTrackIndex));
     savePlaylist();
     play();
     return added;

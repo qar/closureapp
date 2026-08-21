@@ -27,6 +27,17 @@ public:
                           juce::Slider::SliderStyle style,
                           juce::Slider& slider) override;
 
+    void drawTabbedButtonBarBackground(juce::TabbedButtonBar& bar,
+                                       juce::Graphics& g) override;
+    void drawTabButton(juce::TabBarButton& button,
+                       juce::Graphics& g,
+                       bool isMouseOver,
+                       bool isMouseDown) override;
+    void drawTabAreaBehindFrontButton(juce::TabbedButtonBar& bar,
+                                      juce::Graphics& g,
+                                      int width,
+                                      int height) override;
+
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
     juce::Font getLabelFont(juce::Label&) override;
 

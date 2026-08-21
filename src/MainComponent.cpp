@@ -5,7 +5,7 @@ MainComponent::MainComponent()
     : playerPanel(audioEngine, musicLibrary)
 {
     setOpaque(true);
-    setSize(1040, 700);
+    setSize(1120, 720);
     addAndMakeVisible(playerPanel);
 
     const juce::Component::SafePointer<PlayerPanel> safePanel { &playerPanel };

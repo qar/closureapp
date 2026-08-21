@@ -43,7 +43,8 @@ public:
     int addFiles(const juce::Array<juce::File>& files, bool startPlaybackIfEmpty = true);
     int playAlbumPlaylist(const juce::String& playlistId,
                           const juce::String& playlistName,
-                          const juce::Array<juce::File>& files);
+                          const juce::Array<juce::File>& files,
+                          int startTrackIndex = 0);
     bool removeTrack(int index);
     void clearPlaylist();
     void playTrack(int index);

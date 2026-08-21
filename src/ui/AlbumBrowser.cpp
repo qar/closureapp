@@ -209,32 +209,45 @@ public:
             return;
 
         const auto& track = album->tracks[static_cast<size_t>(rowNumber)];
-        if (rowIsSelected)
+        const auto isCurrent = owner.isCurrentTrack(track);
+        if (rowIsSelected || isCurrent)
         {
-            g.setColour(GlassLookAndFeel::accent().withAlpha(0.10f));
+            g.setColour(GlassLookAndFeel::accent().withAlpha(isCurrent ? 0.14f : 0.10f));
             g.fillRoundedRectangle(4.0f, 3.0f,
                                    static_cast<float>(width - 8),
                                    static_cast<float>(height - 6),
                                    6.0f);
         }
 
+        if (isCurrent)
+        {
+            g.setColour(GlassLookAndFeel::accent());
+            g.fillRoundedRectangle(4.0f, 8.0f, 3.0f,
+                                   static_cast<float>(height - 16), 1.5f);
+        }
+
         const auto number = track.trackNumber > 0 ? juce::String(track.trackNumber)
                                                   : juce::String(rowNumber + 1);
-        g.setColour(GlassLookAndFeel::inkMuted());
+        g.setColour(isCurrent ? GlassLookAndFeel::accent()
+                              : GlassLookAndFeel::inkMuted());
         g.setFont(makeFont(11.0f));
         g.drawText(number, 10, 0, 32, height, juce::Justification::centredLeft, false);
 
         auto text = juce::Rectangle<int>(50, 0, width - 120, height);
-        g.setColour(track.isAvailable() ? GlassLookAndFeel::inkPrimary()
-                                        : GlassLookAndFeel::inkMuted());
+        g.setColour(isCurrent ? GlassLookAndFeel::accent()
+                              : (track.isAvailable() ? GlassLookAndFeel::inkPrimary()
+                                                      : GlassLookAndFeel::inkMuted()));
         g.setFont(makeFont(12.0f, true));
         g.drawFittedText(track.title, text.removeFromTop(height / 2),
                          juce::Justification::centredLeft, 1);
-        g.setColour(GlassLookAndFeel::inkMuted());
+        g.setColour(isCurrent ? GlassLookAndFeel::accent().withAlpha(0.78f)
+                              : GlassLookAndFeel::inkMuted());
         g.setFont(makeFont(11.0f));
         g.drawFittedText(track.isAvailable() ? track.artist : "File unavailable",
                          text, juce::Justification::centredLeft, 1);
 
+        g.setColour(isCurrent ? GlassLookAndFeel::accent()
+                              : GlassLookAndFeel::inkMuted());
         g.drawText(formatTime(track.durationSeconds),
                    width - 66,
                    0,
@@ -242,6 +255,11 @@ public:
                    height,
                    juce::Justification::centredRight,
                    false);
+    }
+
+    void listBoxItemDoubleClicked(int rowNumber, const juce::MouseEvent&) override
+    {
+        owner.playTrackAt(rowNumber);
     }
 
 private:
@@ -287,6 +305,7 @@ AlbumBrowser::AlbumBrowser()
     artworkButton.setComponentID("option");
     editButton.setComponentID("option");
     removeButton.setComponentID("quiet");
+    moreButton.setComponentID("option");
     backButton.onClick = [this] { showAlbumList(); };
     playButton.onClick = [this]
     {
@@ -313,6 +332,7 @@ AlbumBrowser::AlbumBrowser()
         if (selectedAlbumId.has_value() && removeAlbumCallback)
             removeAlbumCallback(*selectedAlbumId);
     };
+    moreButton.onClick = [this] { showMoreMenu(); };
 
     addAndMakeVisible(backButton);
     addAndMakeVisible(playButton);
@@ -320,6 +340,7 @@ AlbumBrowser::AlbumBrowser()
     addAndMakeVisible(artworkButton);
     addAndMakeVisible(editButton);
     addAndMakeVisible(removeButton);
+    addAndMakeVisible(moreButton);
 
     showAlbumList();
 }
@@ -364,9 +385,7 @@ void AlbumBrowser::resized()
     auto area = getLocalBounds().reduced(4);
     auto top = area.removeFromTop(38);
     backButton.setBounds(top.removeFromLeft(84).withSizeKeepingCentre(78, 30));
-    removeButton.setBounds(top.removeFromRight(76).withSizeKeepingCentre(70, 30));
-    artworkButton.setBounds(top.removeFromRight(112).withSizeKeepingCentre(106, 30));
-    editButton.setBounds(top.removeFromRight(106).withSizeKeepingCentre(100, 30));
+    moreButton.setBounds(top.removeFromRight(76).withSizeKeepingCentre(70, 30));
 
     const auto detailHeight = juce::jmin(218, juce::jmax(148, area.getHeight() / 2));
     auto details = area.removeFromTop(detailHeight);
@@ -395,6 +414,33 @@ void AlbumBrowser::setState(const MusicLibrary::State& state)
     repaint();
 }
 
+void AlbumBrowser::setPlaybackState(const juce::String& playlistId,
+                                    const juce::String& filePath)
+{
+    if (playbackPlaylistId == playlistId && playbackFilePath == filePath)
+        return;
+
+    playbackPlaylistId = playlistId;
+    playbackFilePath = filePath;
+    trackList.repaint();
+
+    if (!selectedAlbumId.has_value() || playbackPlaylistId != *selectedAlbumId)
+        return;
+
+    const auto* album = selectedAlbum();
+    if (album == nullptr)
+        return;
+
+    for (size_t index = 0; index < album->tracks.size(); ++index)
+    {
+        if (isCurrentTrack(album->tracks[index]))
+        {
+            trackList.scrollToEnsureRowIsOnscreen(static_cast<int>(index));
+            break;
+        }
+    }
+}
+
 void AlbumBrowser::showAlbumList()
 {
     selectedAlbumId.reset();
@@ -406,16 +452,29 @@ void AlbumBrowser::showAlbumList()
     artworkButton.setVisible(false);
     editButton.setVisible(false);
     removeButton.setVisible(false);
+    moreButton.setVisible(false);
     detailTitle.setVisible(false);
     detailArtist.setVisible(false);
     detailInfo.setVisible(false);
     resized();
     repaint();
+    if (viewChangedCallback)
+        viewChangedCallback();
 }
 
 void AlbumBrowser::setPlayAlbumCallback(AlbumCallback callback)
 {
     playAlbumCallback = std::move(callback);
+}
+
+void AlbumBrowser::setPlayTrackCallback(TrackCallback callback)
+{
+    playTrackCallback = std::move(callback);
+}
+
+void AlbumBrowser::setViewChangedCallback(std::function<void()> callback)
+{
+    viewChangedCallback = std::move(callback);
 }
 
 void AlbumBrowser::setAddToQueueCallback(AlbumCallback callback)
@@ -444,17 +503,71 @@ void AlbumBrowser::showAlbumDetails(const juce::String& albumId)
     refreshSelectedAlbum();
     gridViewport.setVisible(false);
     trackList.setVisible(true);
-    backButton.setVisible(true);
+    backButton.setVisible(false);
     playButton.setVisible(true);
     addToQueueButton.setVisible(true);
-    artworkButton.setVisible(true);
-    editButton.setVisible(true);
-    removeButton.setVisible(true);
+    artworkButton.setVisible(false);
+    editButton.setVisible(false);
+    removeButton.setVisible(false);
+    moreButton.setVisible(true);
     detailTitle.setVisible(true);
     detailArtist.setVisible(true);
     detailInfo.setVisible(true);
     resized();
     repaint();
+    if (viewChangedCallback)
+        viewChangedCallback();
+}
+
+void AlbumBrowser::showMoreMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "Edit details", true, false);
+    menu.addItem(2, "Change cover", true, false);
+    menu.addSeparator();
+    menu.addItem(3, "Remove album", true, false);
+
+    const juce::Component::SafePointer<AlbumBrowser> safeBrowser { this };
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&moreButton),
+                       [safeBrowser](int result)
+    {
+        if (safeBrowser == nullptr || !safeBrowser->selectedAlbumId.has_value())
+            return;
+
+        const auto& albumId = *safeBrowser->selectedAlbumId;
+        switch (result)
+        {
+            case 1:
+                if (safeBrowser->editAlbumCallback)
+                    safeBrowser->editAlbumCallback(albumId);
+                break;
+            case 2:
+                if (safeBrowser->chooseArtworkCallback)
+                    safeBrowser->chooseArtworkCallback(albumId);
+                break;
+            case 3:
+                if (safeBrowser->removeAlbumCallback)
+                    safeBrowser->removeAlbumCallback(albumId);
+                break;
+            default:
+                break;
+        }
+    });
+}
+
+void AlbumBrowser::playTrackAt(int rowNumber) const
+{
+    const auto* album = selectedAlbum();
+    if (album == nullptr
+        || !juce::isPositiveAndBelow(rowNumber, static_cast<int>(album->tracks.size()))
+        || !selectedAlbumId.has_value())
+    {
+        return;
+    }
+
+    const auto& track = album->tracks[static_cast<size_t>(rowNumber)];
+    if (track.isAvailable() && playTrackCallback)
+        playTrackCallback(*selectedAlbumId, track.file);
 }
 
 void AlbumBrowser::refreshSelectedAlbum()
@@ -490,6 +603,14 @@ const MusicLibrary::Album* AlbumBrowser::selectedAlbum() const
         return album.id == *selectedAlbumId;
     });
     return it != currentState.albums.end() ? &*it : nullptr;
+}
+
+bool AlbumBrowser::isCurrentTrack(const MusicLibrary::Track& track) const
+{
+    return selectedAlbumId.has_value()
+        && playbackPlaylistId == *selectedAlbumId
+        && playbackFilePath.isNotEmpty()
+        && track.file.getFullPathName().compareIgnoreCase(playbackFilePath) == 0;
 }
 
 void AlbumBrowser::drawArtwork(juce::Graphics& g,

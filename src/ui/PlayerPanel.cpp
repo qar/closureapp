@@ -9,23 +9,25 @@
 namespace
 {
 constexpr int outerMargin = 24;
-constexpr int headerHeight = 54;
 constexpr int sectionGap = 20;
-constexpr int transportHeight = 148;
+constexpr int tabBarHeight = 38;
+constexpr int playbackColumnMinWidth = 320;
+constexpr int playbackColumnMaxWidth = 430;
+constexpr int playlistColumnMinWidth = 320;
+constexpr int playbackArtworkGap = 12;
+constexpr int playbackInfoHeight = 74;
+constexpr int playbackInfoGap = 8;
+constexpr int playbackProgressHeight = 24;
+constexpr int playbackTimeGap = 4;
+constexpr int playbackTimeHeight = 20;
+constexpr int playbackControlGap = 8;
+constexpr int playbackControlsHeight = 42;
+constexpr int playbackOptionsGap = 6;
+constexpr int playbackOptionsHeight = 34;
 
 juce::Colour backgroundColour()
 {
     return juce::Colour(0xfff3f5ef);
-}
-
-juce::Colour cardColour()
-{
-    return juce::Colour(0xffffffff);
-}
-
-juce::Colour borderColour()
-{
-    return GlassLookAndFeel::glassStroke();
 }
 
 juce::String formatTime(double seconds)
@@ -102,15 +104,8 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     setOpaque(true);
     setLookAndFeel(&lookAndFeel);
 
-    configureLabel(appTitleLabel, "CLOSURE", 22.0f, GlassLookAndFeel::inkPrimary(), true);
-    configureLabel(appSubtitleLabel, "Local music", 12.0f, GlassLookAndFeel::inkMuted());
-    addAndMakeVisible(appTitleLabel);
-    addAndMakeVisible(appSubtitleLabel);
-
-    configureLabel(playlistLabel, "Playlist", 18.0f, GlassLookAndFeel::inkPrimary(), true);
     configureLabel(playlistInfoLabel, "0 tracks", 12.0f, GlassLookAndFeel::inkMuted(), false,
                    juce::Justification::centredRight);
-    addAndMakeVisible(playlistLabel);
     addAndMakeVisible(playlistInfoLabel);
 
     configureLabel(currentTitleLabel, "Nothing playing", 20.0f,
@@ -130,10 +125,12 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
                    juce::Justification::centred);
     addAndMakeVisible(emptyStateLabel);
 
-    configureLabel(timeLabel, "0:00 / 0:00", 12.0f, GlassLookAndFeel::inkMuted(), false,
+    configureLabel(elapsedTimeLabel, "0:00", 12.0f, GlassLookAndFeel::inkMuted());
+    configureLabel(durationTimeLabel, "0:00", 12.0f, GlassLookAndFeel::inkMuted(), false,
                    juce::Justification::centredRight);
     configureLabel(volumeLabel, "Volume", 12.0f, GlassLookAndFeel::inkMuted(), true);
-    addAndMakeVisible(timeLabel);
+    addAndMakeVisible(elapsedTimeLabel);
+    addAndMakeVisible(durationTimeLabel);
     addAndMakeVisible(volumeLabel);
 
     addButton.setComponentID("primary");
@@ -150,16 +147,6 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     clearButton.setTooltip("Clear the playlist");
     clearButton.setName("Clear playlist");
     clearButton.onClick = [this] { audioEngine.clearPlaylist(); };
-
-    albumsViewButton.setComponentID("option");
-    albumsViewButton.setTooltip("Show albums");
-    albumsViewButton.setName("Show albums");
-    albumsViewButton.onClick = [this] { showAlbumView(); };
-
-    queueViewButton.setComponentID("option");
-    queueViewButton.setTooltip("Show queue");
-    queueViewButton.setName("Show queue");
-    queueViewButton.onClick = [this] { showQueueView(); };
 
     previousButton.setComponentID("transport-previous");
     previousButton.setTooltip("Previous track");
@@ -217,29 +204,35 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
         audioEngine.setGaplessPlayback(!currentState.gaplessPlayback);
     };
 
-    visualModeButton.setComponentID("option");
-    visualModeButton.setClickingTogglesState(true);
-    visualModeButton.setTooltip("Switch between artwork and spectrum");
-    visualModeButton.setName("Show spectrum");
-    visualModeButton.onClick = [this]
-    {
-        showSpectrum = visualModeButton.getToggleState();
-        updateVisualModeLabel();
-        repaint(artworkBounds);
-    };
+    backToAlbumsButton.setComponentID("quiet");
+    backToAlbumsButton.setTooltip("Back to albums");
+    backToAlbumsButton.setName("Back to albums");
+    backToAlbumsButton.onClick = [this] { albumBrowser.showAlbumList(); };
+
+    viewTabs.setName("Primary navigation");
+    viewTabs.setColour(juce::TabbedButtonBar::tabOutlineColourId,
+                       GlassLookAndFeel::glassStroke());
+    viewTabs.setColour(juce::TabbedButtonBar::frontOutlineColourId,
+                       GlassLookAndFeel::accent());
+    viewTabs.setColour(juce::TabbedButtonBar::tabTextColourId,
+                       GlassLookAndFeel::inkMuted());
+    viewTabs.setColour(juce::TabbedButtonBar::frontTextColourId,
+                       GlassLookAndFeel::inkPrimary());
+    viewTabs.addTab("Albums", juce::Colours::transparentBlack, 0);
+    viewTabs.addTab("Queue", juce::Colours::transparentBlack, 1);
+    viewTabs.addChangeListener(this);
 
     addAndMakeVisible(addButton);
     addAndMakeVisible(addAlbumButton);
     addAndMakeVisible(clearButton);
-    addAndMakeVisible(albumsViewButton);
-    addAndMakeVisible(queueViewButton);
+    addAndMakeVisible(viewTabs);
+    addAndMakeVisible(backToAlbumsButton);
     addAndMakeVisible(previousButton);
     addAndMakeVisible(playButton);
     addAndMakeVisible(stopButton);
     addAndMakeVisible(nextButton);
     addAndMakeVisible(repeatButton);
     addAndMakeVisible(gaplessButton);
-    addAndMakeVisible(visualModeButton);
 
     playlistList.setModel(this);
     playlistList.setRowHeight(64);
@@ -252,6 +245,15 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     albumBrowser.setPlayAlbumCallback([this](const juce::String& albumId)
     {
         playAlbum(albumId);
+    });
+    albumBrowser.setPlayTrackCallback([this](const juce::String& albumId,
+                                             const juce::File& file)
+    {
+        playAlbumTrack(albumId, file);
+    });
+    albumBrowser.setViewChangedCallback([this]
+    {
+        resized();
     });
     albumBrowser.setAddToQueueCallback([this](const juce::String& albumId)
     {
@@ -310,13 +312,11 @@ PlayerPanel::~PlayerPanel()
 void PlayerPanel::paint(juce::Graphics& g)
 {
     g.fillAll(backgroundColour());
-    drawCard(g, nowPlayingBounds.toFloat());
-    drawCard(g, playlistBounds.toFloat());
 
     if (showSpectrum)
     {
         drawSpectrum(g,
-                     artworkBounds.toFloat(),
+                     spectrumBounds.toFloat(),
                      currentState.currentTrackMetadata,
                      currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
@@ -336,82 +336,160 @@ void PlayerPanel::resized()
     panelBounds.removeFromTop(38);
 #endif
 
-    auto header = panelBounds.removeFromTop(headerHeight);
-    auto headerActions = header.removeFromRight(370);
-    clearButton.setBounds(headerActions.removeFromRight(76).withSizeKeepingCentre(76, 34));
-    headerActions.removeFromRight(10);
-    addAlbumButton.setBounds(headerActions.removeFromRight(128).withSizeKeepingCentre(128, 34));
-    headerActions.removeFromRight(10);
-    addButton.setBounds(headerActions.removeFromRight(128).withSizeKeepingCentre(128, 34));
-
-    appTitleLabel.setBounds(header.removeFromTop(28));
-    appSubtitleLabel.setBounds(header);
+    const auto showingAlbumDetails = showingAlbums && albumBrowser.isShowingDetails();
+    viewTabs.setVisible(!showingAlbumDetails);
+    backToAlbumsButton.setVisible(showingAlbumDetails);
+    if (!showingAlbumDetails)
+    {
+        auto tabBar = panelBounds.removeFromTop(tabBarHeight);
+        viewTabs.setBounds(tabBar.withSizeKeepingCentre(180, 34));
+    }
 
     panelBounds.removeFromTop(sectionGap);
-    transportBounds = panelBounds.removeFromBottom(transportHeight);
-    panelBounds.removeFromBottom(sectionGap);
 
     auto mainArea = panelBounds;
-    const auto leftWidth = juce::jlimit(270, 340, mainArea.getWidth() * 36 / 100);
+    const auto splitWidth = juce::jmax(0, mainArea.getWidth() - sectionGap);
+    const auto leftMinimum = juce::jmin(playbackColumnMinWidth, splitWidth / 2);
+    const auto leftMaximum = juce::jmin(playbackColumnMaxWidth,
+                                        juce::jmax(leftMinimum,
+                                                   splitWidth - playlistColumnMinWidth));
+    const auto preferredLeftWidth = splitWidth * 40 / 100;
+    const auto leftWidth = splitWidth > 0
+                         ? juce::jlimit(leftMinimum, leftMaximum, preferredLeftWidth)
+                         : 0;
     nowPlayingBounds = mainArea.removeFromLeft(leftWidth);
-    mainArea.removeFromLeft(sectionGap);
+    mainArea.removeFromLeft(juce::jmin(sectionGap, mainArea.getWidth()));
     playlistBounds = mainArea;
 
-    auto nowArea = nowPlayingBounds.reduced(24, 22);
-    const auto infoHeight = 84;
-    const auto coverSize = juce::jmax(0, juce::jmin(nowArea.getWidth(), nowArea.getHeight() - infoHeight));
-    artworkBounds = nowArea.removeFromTop(coverSize).withSizeKeepingCentre(coverSize, coverSize);
-    visualModeButton.setBounds(artworkBounds.reduced(12).removeFromTop(34).removeFromRight(94));
-    nowArea.removeFromTop(16);
-    currentTitleLabel.setBounds(nowArea.removeFromTop(28));
-    currentArtistLabel.setBounds(nowArea.removeFromTop(24));
-    currentAlbumLabel.setBounds(nowArea.removeFromTop(22));
+    auto playbackArea = nowPlayingBounds.reduced(24, 18);
 
-    auto playlistArea = playlistBounds.reduced(20, 18);
-    auto playlistHeader = playlistArea.removeFromTop(32);
-    playlistInfoLabel.setBounds(playlistHeader.removeFromRight(92));
-    auto viewButtons = playlistHeader.removeFromRight(150);
-    queueViewButton.setBounds(viewButtons.removeFromRight(72).withSizeKeepingCentre(68, 28));
-    viewButtons.removeFromRight(6);
-    albumsViewButton.setBounds(viewButtons.removeFromRight(72).withSizeKeepingCentre(68, 28));
-    playlistLabel.setBounds(playlistHeader);
-    playlistArea.removeFromTop(10);
-    playlistList.setBounds(playlistArea);
-    albumBrowser.setBounds(playlistArea);
-    emptyStateLabel.setBounds(playlistArea.reduced(16, 12));
+    const auto playbackReserve = playbackArtworkGap
+                               + playbackInfoHeight
+                               + playbackInfoGap
+                               + playbackProgressHeight
+                               + playbackTimeGap
+                               + playbackTimeHeight
+                               + playbackControlGap
+                               + playbackControlsHeight
+                               + playbackOptionsGap
+                               + playbackOptionsHeight;
+    const auto coverSize = juce::jmax(0, juce::jmin(playbackArea.getWidth(),
+                                                    playbackArea.getHeight() - playbackReserve));
+    const auto artworkSlot = playbackArea.removeFromTop(coverSize);
+    spectrumBounds = artworkSlot;
+    const auto artworkSize = coverSize / 2;
+    artworkBounds = artworkSlot.withSizeKeepingCentre(artworkSize, artworkSize);
+    playbackArea.removeFromTop(playbackArtworkGap);
+    currentTitleLabel.setBounds(playbackArea.removeFromTop(28));
+    currentArtistLabel.setBounds(playbackArea.removeFromTop(24));
+    currentAlbumLabel.setBounds(playbackArea.removeFromTop(22));
+    playbackArea.removeFromTop(playbackInfoGap);
 
-    auto transport = transportBounds.reduced(18, 14);
-    auto progressRow = transport.removeFromTop(24);
-    timeLabel.setBounds(progressRow.removeFromRight(92));
-    progressRow.removeFromRight(10);
+    transportBounds = playbackArea;
+    auto transport = transportBounds;
+    auto progressRow = transport.removeFromTop(playbackProgressHeight);
     positionSlider.setBounds(progressRow);
 
-    transport.removeFromTop(12);
-    auto actionRow = transport;
+    transport.removeFromTop(playbackTimeGap);
+    auto timeRow = transport.removeFromTop(playbackTimeHeight);
+    elapsedTimeLabel.setBounds(timeRow.removeFromLeft(72));
+    durationTimeLabel.setBounds(timeRow.removeFromRight(72));
 
-    auto options = actionRow.removeFromLeft(204);
-    repeatButton.setBounds(options.removeFromLeft(44).withSizeKeepingCentre(44, 34));
-    options.removeFromLeft(8);
-    gaplessButton.setBounds(options.removeFromLeft(98).withSizeKeepingCentre(98, 34));
+    transport.removeFromTop(playbackControlGap);
+    auto controlsArea = transport.removeFromTop(playbackControlsHeight);
+    auto controls = controlsArea.withSizeKeepingCentre(juce::jmin(242, controlsArea.getWidth()), 38);
+    previousButton.setBounds(controls.removeFromLeft(52));
+    controls.removeFromLeft(6);
+    stopButton.setBounds(controls.removeFromLeft(52));
+    controls.removeFromLeft(6);
+    playButton.setBounds(controls.removeFromLeft(68));
+    controls.removeFromLeft(6);
+    nextButton.setBounds(controls.removeFromLeft(52));
 
-    auto volume = actionRow.removeFromRight(166);
+    transport.removeFromTop(playbackOptionsGap);
+    auto options = transport.removeFromTop(playbackOptionsHeight);
+    const auto volumeWidth = juce::jlimit(90, 160, options.getWidth() / 3);
+    auto volume = options.removeFromRight(volumeWidth);
     volumeLabel.setBounds(volume.removeFromLeft(52));
     volume.removeFromLeft(8);
     volumeSlider.setBounds(volume.withSizeKeepingCentre(volume.getWidth(), 24));
 
-    auto controls = actionRow.withSizeKeepingCentre(270, 38);
-    previousButton.setBounds(controls.removeFromLeft(58));
-    controls.removeFromLeft(8);
-    stopButton.setBounds(controls.removeFromLeft(58));
-    controls.removeFromLeft(8);
-    playButton.setBounds(controls.removeFromLeft(80));
-    controls.removeFromLeft(8);
-    nextButton.setBounds(controls.removeFromLeft(58));
+    repeatButton.setBounds(options.removeFromLeft(44).withSizeKeepingCentre(44, 34));
+    options.removeFromLeft(8);
+    gaplessButton.setBounds(options.removeFromLeft(98).withSizeKeepingCentre(98, 34));
+
+    const auto showingQueue = !showingAlbums;
+    addButton.setVisible(showingQueue);
+    addAlbumButton.setVisible(!showingAlbumDetails);
+    clearButton.setVisible(showingQueue);
+    playlistInfoLabel.setVisible(!showingAlbumDetails);
+
+    auto playlistArea = playlistBounds.reduced(20, 18);
+    if (showingAlbumDetails)
+    {
+        auto detailNavigation = playlistArea.removeFromTop(34);
+        backToAlbumsButton.setBounds(detailNavigation.removeFromLeft(160)
+                                          .withSizeKeepingCentre(140, 30));
+        playlistArea.removeFromTop(12);
+    }
+    else
+    {
+        if (showingQueue)
+        {
+            auto playlistActions = playlistArea.removeFromTop(38);
+            auto actions = playlistActions.withSizeKeepingCentre(juce::jmin(352,
+                                                                              playlistActions.getWidth()),
+                                                                 34);
+            const auto actionGap = 8;
+            const auto clearWidth = juce::jmin(76, juce::jmax(60, actions.getWidth() / 5));
+            const auto primaryWidth = juce::jmax(1,
+                                                 (actions.getWidth() - clearWidth - actionGap * 2) / 2);
+            addButton.setBounds(actions.removeFromLeft(primaryWidth));
+            actions.removeFromLeft(actionGap);
+            addAlbumButton.setBounds(actions.removeFromLeft(primaryWidth));
+            actions.removeFromLeft(actionGap);
+            clearButton.setBounds(actions.removeFromLeft(clearWidth));
+        }
+        else
+        {
+            auto footer = playlistArea.removeFromBottom(34);
+            addAlbumButton.setBounds(footer.removeFromLeft(128).withSizeKeepingCentre(128, 34));
+            playlistInfoLabel.setBounds(footer.removeFromRight(92));
+            playlistArea.removeFromBottom(12);
+        }
+
+        if (showingQueue)
+        {
+            playlistArea.removeFromTop(12);
+            auto playlistHeader = playlistArea.removeFromTop(32);
+            playlistInfoLabel.setBounds(playlistHeader.removeFromRight(92));
+            playlistArea.removeFromTop(10);
+        }
+    }
+
+    playlistList.setBounds(playlistArea);
+    albumBrowser.setBounds(playlistArea);
+    emptyStateLabel.setBounds(playlistArea.reduced(16, 12));
+}
+
+void PlayerPanel::mouseUp(const juce::MouseEvent& event)
+{
+    const auto toggleBounds = showSpectrum ? spectrumBounds : artworkBounds;
+    if (event.mouseWasDraggedSinceMouseDown()
+        || event.mods.isPopupMenu()
+        || !toggleBounds.contains(event.getPosition()))
+    {
+        return;
+    }
+
+    showSpectrum = !showSpectrum;
+    repaint(spectrumBounds);
 }
 
 void PlayerPanel::applyState(const AudioEngine::State& state)
 {
     currentState = state;
+    albumBrowser.setPlaybackState(currentState.activePlaylistId, currentState.filePath);
     rebuildPlaylistRows();
 
     if (currentState.filePath.isNotEmpty())
@@ -462,9 +540,8 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
         positionSlider.setValue(currentState.positionSeconds, juce::dontSendNotification);
     }
 
-    timeLabel.setText(formatTime(currentState.positionSeconds) + " / "
-                          + formatTime(currentState.lengthSeconds),
-                      juce::dontSendNotification);
+    elapsedTimeLabel.setText(formatTime(currentState.positionSeconds), juce::dontSendNotification);
+    durationTimeLabel.setText(formatTime(currentState.lengthSeconds), juce::dontSendNotification);
     repaint();
 }
 
@@ -607,7 +684,7 @@ void PlayerPanel::editAlbum(const juce::String& albumId)
                             false);
 }
 
-void PlayerPanel::playAlbum(const juce::String& albumId)
+void PlayerPanel::playAlbum(const juce::String& albumId, int startTrackIndex)
 {
     const auto files = musicLibrary.getPlayableFiles(albumId);
     if (files.isEmpty())
@@ -630,11 +707,25 @@ void PlayerPanel::playAlbum(const juce::String& albumId)
 
     if (audioEngine.playAlbumPlaylist(albumId,
                                       title.isNotEmpty() ? title : albumId,
-                                      files) <= 0)
+                                      files,
+                                      startTrackIndex) <= 0)
     {
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon,
                                                "Play album",
                                                "The album could not be loaded for playback.");
+    }
+}
+
+void PlayerPanel::playAlbumTrack(const juce::String& albumId, const juce::File& file)
+{
+    const auto files = musicLibrary.getPlayableFiles(albumId);
+    for (int index = 0; index < files.size(); ++index)
+    {
+        if (files[index].getFullPathName().compareIgnoreCase(file.getFullPathName()) == 0)
+        {
+            playAlbum(albumId, index);
+            return;
+        }
     }
 }
 
@@ -655,15 +746,14 @@ void PlayerPanel::removeAlbum(const juce::String& albumId)
 void PlayerPanel::showAlbumView()
 {
     showingAlbums = true;
+    albumBrowser.showAlbumList();
     playlistList.setVisible(false);
     albumBrowser.setVisible(true);
     emptyStateLabel.setVisible(false);
-    playlistLabel.setText("Albums", juce::dontSendNotification);
     playlistInfoLabel.setText(juce::String(libraryState.albums.size())
                                   + (libraryState.albums.size() == 1 ? " album" : " albums"),
                               juce::dontSendNotification);
-    albumsViewButton.setToggleState(true, juce::dontSendNotification);
-    queueViewButton.setToggleState(false, juce::dontSendNotification);
+    viewTabs.setCurrentTabIndex(0, false);
     resized();
 }
 
@@ -673,13 +763,23 @@ void PlayerPanel::showQueueView()
     playlistList.setVisible(true);
     albumBrowser.setVisible(false);
     emptyStateLabel.setVisible(currentState.playlistPaths.isEmpty());
-    playlistLabel.setText("Playlist", juce::dontSendNotification);
     playlistInfoLabel.setText(juce::String(currentState.playlistPaths.size())
                                   + (currentState.playlistPaths.size() == 1 ? " track" : " tracks"),
                               juce::dontSendNotification);
-    albumsViewButton.setToggleState(false, juce::dontSendNotification);
-    queueViewButton.setToggleState(true, juce::dontSendNotification);
+    viewTabs.setCurrentTabIndex(1, false);
     resized();
+}
+
+void PlayerPanel::changeListenerCallback(juce::ChangeBroadcaster* source)
+{
+    if (source != &viewTabs)
+        return;
+
+    const auto newCurrentTabIndex = viewTabs.getCurrentTabIndex();
+    if (newCurrentTabIndex == 0 && !showingAlbums)
+        showAlbumView();
+    else if (newCurrentTabIndex == 1 && showingAlbums)
+        showQueueView();
 }
 
 void PlayerPanel::seekFromSlider()
@@ -718,7 +818,6 @@ void PlayerPanel::updateControlLabels()
                                      : (repeatIsOne ? "Repeat: One" : "Repeat: All"));
     gaplessButton.setButtonText(currentState.gaplessPlayback ? "Gapless: On" : "Gapless: Off");
     gaplessButton.setToggleState(currentState.gaplessPlayback, juce::dontSendNotification);
-    updateVisualModeLabel();
 
     playButton.setEnabled(hasActiveTracks);
     previousButton.setEnabled(hasActiveTracks);
@@ -726,14 +825,6 @@ void PlayerPanel::updateControlLabels()
     nextButton.setEnabled(hasActiveTracks);
     repeatButton.setEnabled(hasActiveTracks);
     clearButton.setEnabled(hasQueueTracks);
-}
-
-void PlayerPanel::updateVisualModeLabel()
-{
-    visualModeButton.setButtonText(showSpectrum ? "Artwork" : "Spectrum");
-    visualModeButton.setTooltip(showSpectrum ? "Show artwork" : "Show spectrum");
-    visualModeButton.setName(showSpectrum ? "Show artwork" : "Show spectrum");
-    visualModeButton.setToggleState(showSpectrum, juce::dontSendNotification);
 }
 
 void PlayerPanel::updateSpectrum()
@@ -793,7 +884,7 @@ void PlayerPanel::timerCallback()
 {
     updateSpectrum();
     if (showSpectrum)
-        repaint(artworkBounds);
+        repaint(spectrumBounds);
 }
 
 TrackMetadataPtr PlayerPanel::metadataAt(int index) const
@@ -896,83 +987,29 @@ void PlayerPanel::drawArtwork(juce::Graphics& g,
 
 void PlayerPanel::drawSpectrum(juce::Graphics& g,
                                juce::Rectangle<float> bounds,
-                               const TrackMetadataPtr& metadata,
-                               const juce::String& fallbackKey) const
+                               const TrackMetadataPtr&,
+                               const juce::String&) const
 {
     if (bounds.isEmpty())
         return;
 
-    juce::Path clip;
-    clip.addRoundedRectangle(bounds, 12.0f);
-    g.saveState();
-    g.reduceClipRegion(clip);
-
-    const bool hasContent = metadata != nullptr && metadata->file != juce::File{};
-    const auto colour = hasContent ? artworkColour(metadata->file.getFullPathName())
-                                   : artworkColour(fallbackKey);
-    juce::ColourGradient gradient(colour.darker(0.62f), bounds.getX(), bounds.getBottom(),
-                                  colour.darker(0.28f), bounds.getRight(), bounds.getY(), true);
-    g.setGradientFill(gradient);
-    g.fillRect(bounds);
-
-    const auto graph = bounds.reduced(22.0f, 24.0f);
-    g.setColour(juce::Colours::white.withAlpha(0.10f));
-    for (int row = 1; row < 5; ++row)
-    {
-        const auto y = graph.getY() + graph.getHeight() * static_cast<float>(row) / 5.0f;
-        g.drawLine(graph.getX(), y, graph.getRight(), y, 1.0f);
-    }
-
-    auto graphArea = graph;
-    auto labelArea = graphArea.removeFromTop(22.0f);
-    g.setColour(juce::Colours::white.withAlpha(0.78f));
-    g.setFont(makeFont(10.0f, true));
-    g.drawText("SPECTRUM", labelArea.toNearestInt(), juce::Justification::centredLeft, false);
-
-    const auto baseline = graphArea.getBottom() - 2.0f;
+    const auto graph = bounds.reduced(8.0f, 8.0f);
+    const auto baseline = graph.getBottom();
     const auto gap = 3.0f;
     const auto barWidth = juce::jmax(1.0f,
-                                     (graphArea.getWidth() - gap * static_cast<float>(spectrumBarCount - 1))
+                                     (graph.getWidth() - gap * static_cast<float>(spectrumBarCount - 1))
                                          / static_cast<float>(spectrumBarCount));
-    const auto accent = juce::Colours::white.withAlpha(hasContent ? 0.90f : 0.62f);
+    const auto barColour = GlassLookAndFeel::accent();
 
     for (int bar = 0; bar < spectrumBarCount; ++bar)
     {
         const auto level = spectrumLevels[static_cast<size_t>(bar)];
-        const auto height = juce::jmax(3.0f, graphArea.getHeight() * (0.04f + level * 0.90f));
-        const auto x = graphArea.getX() + static_cast<float>(bar) * (barWidth + gap);
+        const auto height = juce::jmax(3.0f, graph.getHeight() * (0.04f + level * 0.90f));
+        const auto x = graph.getX() + static_cast<float>(bar) * (barWidth + gap);
         auto barBounds = juce::Rectangle<float>(x, baseline - height, barWidth, height);
-        juce::ColourGradient barGradient(accent.brighter(0.12f), barBounds.getX(), barBounds.getY(),
-                                          accent.darker(0.28f), barBounds.getX(), barBounds.getBottom(), false);
-        g.setGradientFill(barGradient);
+        g.setColour(barColour);
         g.fillRoundedRectangle(barBounds, juce::jmin(3.0f, barWidth * 0.5f));
     }
-
-    g.setColour(juce::Colours::white.withAlpha(0.30f));
-    g.drawLine(graphArea.getX(), baseline, graphArea.getRight(), baseline, 1.0f);
-
-    if (!hasContent)
-    {
-        g.setColour(juce::Colours::white.withAlpha(0.72f));
-        g.setFont(makeFont(13.0f));
-        g.drawText("Add audio to see the spectrum",
-                   graphArea.toNearestInt().withSizeKeepingCentre(static_cast<int>(graphArea.getWidth()), 26),
-                   juce::Justification::centred,
-                   false);
-    }
-
-    g.restoreState();
-}
-
-void PlayerPanel::drawCard(juce::Graphics& g, juce::Rectangle<float> bounds) const
-{
-    if (bounds.isEmpty())
-        return;
-
-    g.setColour(cardColour());
-    g.fillRoundedRectangle(bounds, 10.0f);
-    g.setColour(borderColour());
-    g.drawRoundedRectangle(bounds, 10.0f, 1.0f);
 }
 
 int PlayerPanel::getNumRows()

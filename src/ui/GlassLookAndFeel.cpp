@@ -9,6 +9,8 @@ GlassLookAndFeel::GlassLookAndFeel()
     setColour(juce::Slider::thumbColourId, accent());
     setColour(juce::Slider::trackColourId, accent());
     setColour(juce::Slider::backgroundColourId, glassStroke());
+    setColour(juce::ScrollBar::thumbColourId, inkPrimary());
+    setColour(juce::ScrollBar::trackColourId, juce::Colours::transparentBlack);
     setColour(juce::Label::textColourId, inkPrimary());
 }
 
@@ -101,6 +103,58 @@ void GlassLookAndFeel::drawLinearSlider(juce::Graphics& g,
         juce::LookAndFeel_V4::drawLinearSlider(g, x, y, width, height, sliderPos,
                                                0, 0, slider.getSliderStyle(), slider);
     }
+}
+
+void GlassLookAndFeel::drawTabbedButtonBarBackground(juce::TabbedButtonBar& bar,
+                                                      juce::Graphics& g)
+{
+    g.setColour(glassStroke());
+    if (bar.isVertical())
+        g.fillRect(bar.getWidth() - 1, 0, 1, bar.getHeight());
+    else
+        g.fillRect(0, bar.getHeight() - 1, bar.getWidth(), 1);
+}
+
+void GlassLookAndFeel::drawTabButton(juce::TabBarButton& button,
+                                     juce::Graphics& g,
+                                     bool isMouseOver,
+                                     bool isMouseDown)
+{
+    auto area = button.getActiveArea().toFloat();
+    const auto isActive = button.isFrontTab();
+    const auto fill = isActive ? accent().withAlpha(0.10f)
+                               : (isMouseOver || isMouseDown
+                                      ? glassStroke().withAlpha(0.28f)
+                                      : juce::Colours::transparentBlack);
+
+    if (!fill.isTransparent())
+    {
+        g.setColour(fill);
+        g.fillRoundedRectangle(area.reduced(1.0f, 2.0f), 7.0f);
+    }
+
+    if (isActive)
+    {
+        g.setColour(accent());
+        if (button.getTabbedButtonBar().isVertical())
+            g.fillRoundedRectangle(area.removeFromRight(2.0f).reduced(0.0f, 5.0f), 1.0f);
+        else
+            g.fillRoundedRectangle(area.removeFromBottom(2.0f).reduced(5.0f, 0.0f), 1.0f);
+    }
+
+    g.setColour(isActive ? inkPrimary() : inkMuted());
+    g.setFont(getTabButtonFont(button, static_cast<float>(button.getHeight())));
+    g.drawText(button.getButtonText(),
+               button.getTextArea(),
+               juce::Justification::centred,
+               false);
+}
+
+void GlassLookAndFeel::drawTabAreaBehindFrontButton(juce::TabbedButtonBar&,
+                                                     juce::Graphics&,
+                                                     int,
+                                                     int)
+{
 }
 
 juce::Font GlassLookAndFeel::getTextButtonFont(juce::TextButton&, int buttonHeight)

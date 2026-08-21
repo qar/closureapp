@@ -10,7 +10,8 @@
 
 class PlayerPanel final : public juce::Component,
                           private juce::ListBoxModel,
-                          private juce::Timer
+                          private juce::Timer,
+                          private juce::ChangeListener
 {
 public:
     PlayerPanel(AudioEngine& engine, MusicLibrary& library);
@@ -18,6 +19,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void mouseUp(const juce::MouseEvent& event) override;
 
     void applyState(const AudioEngine::State& state);
     void applyLibraryState(const MusicLibrary::State& state);
@@ -27,7 +29,8 @@ private:
     void openAlbumChooser();
     void chooseAlbumArtwork(const juce::String& albumId);
     void editAlbum(const juce::String& albumId);
-    void playAlbum(const juce::String& albumId);
+    void playAlbum(const juce::String& albumId, int startTrackIndex = 0);
+    void playAlbumTrack(const juce::String& albumId, const juce::File& file);
     void addAlbumToQueue(const juce::String& albumId);
     void removeAlbum(const juce::String& albumId);
     void showAlbumView();
@@ -35,8 +38,8 @@ private:
     void seekFromSlider();
     void rebuildPlaylistRows();
     void updateControlLabels();
-    void updateVisualModeLabel();
     void updateSpectrum();
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
 
     TrackMetadataPtr metadataAt(int index) const;
@@ -53,7 +56,6 @@ private:
                       juce::Rectangle<float> bounds,
                       const TrackMetadataPtr& metadata,
                       const juce::String& fallbackKey) const;
-    void drawCard(juce::Graphics& g, juce::Rectangle<float> bounds) const;
 
     int getNumRows() override;
     void paintListBoxItem(int rowNumber,
@@ -68,30 +70,27 @@ private:
     GlassLookAndFeel lookAndFeel;
     AlbumBrowser albumBrowser;
 
-    juce::Label appTitleLabel;
-    juce::Label appSubtitleLabel;
-    juce::Label playlistLabel;
     juce::Label playlistInfoLabel;
     juce::Label currentTitleLabel;
     juce::Label currentArtistLabel;
     juce::Label currentAlbumLabel;
     juce::Label emptyStateLabel;
-    juce::Label timeLabel;
+    juce::Label elapsedTimeLabel;
+    juce::Label durationTimeLabel;
     juce::Label volumeLabel;
 
     juce::ListBox playlistList;
     juce::TextButton addButton { "Add music" };
     juce::TextButton addAlbumButton { "Add album" };
     juce::TextButton clearButton { "Clear" };
-    juce::TextButton albumsViewButton { "Albums" };
-    juce::TextButton queueViewButton { "Queue" };
+    juce::TabbedButtonBar viewTabs { juce::TabbedButtonBar::TabsAtTop };
+    juce::TextButton backToAlbumsButton { "Back to albums" };
     juce::DrawableButton previousButton { "Previous track", juce::DrawableButton::ImageFitted };
     juce::DrawableButton playButton { "Play", juce::DrawableButton::ImageFitted };
     juce::DrawableButton stopButton { "Stop", juce::DrawableButton::ImageFitted };
     juce::DrawableButton nextButton { "Next track", juce::DrawableButton::ImageFitted };
     juce::DrawableButton repeatButton { "Repeat mode", juce::DrawableButton::ImageFitted };
     juce::TextButton gaplessButton { "Gapless" };
-    juce::TextButton visualModeButton { "Spectrum" };
     juce::Slider positionSlider;
     juce::Slider volumeSlider;
 
@@ -118,6 +117,7 @@ private:
     juce::Rectangle<int> nowPlayingBounds;
     juce::Rectangle<int> playlistBounds;
     juce::Rectangle<int> transportBounds;
+    juce::Rectangle<int> spectrumBounds;
     juce::Rectangle<int> artworkBounds;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PlayerPanel)
