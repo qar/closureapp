@@ -81,12 +81,14 @@ std::unique_ptr<juce::Drawable> drawableFromSvg(const char* svg, juce::Colour co
     return nullptr;
 }
 
-void setTransportIcon(juce::DrawableButton& button, const char* svg)
+void setControlIcon(juce::DrawableButton& button,
+                    const char* svg,
+                    juce::Colour colour = GlassLookAndFeel::accent())
 {
     button.setEdgeIndent(9);
-    const auto normal = drawableFromSvg(svg, GlassLookAndFeel::accent());
-    const auto over = drawableFromSvg(svg, GlassLookAndFeel::accent().brighter(0.15f));
-    const auto down = drawableFromSvg(svg, GlassLookAndFeel::accent().darker(0.12f));
+    const auto normal = drawableFromSvg(svg, colour);
+    const auto over = drawableFromSvg(svg, colour.brighter(0.15f));
+    const auto down = drawableFromSvg(svg, colour.darker(0.12f));
     button.setImages(normal.get(), over.get(), down.get());
 }
 }
@@ -179,10 +181,11 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     nextButton.setName("Next track");
     nextButton.onClick = [this] { audioEngine.playNext(); };
 
-    setTransportIcon(previousButton, ClosureTransportIcons::previous);
-    setTransportIcon(playButton, ClosureTransportIcons::play);
-    setTransportIcon(stopButton, ClosureTransportIcons::stop);
-    setTransportIcon(nextButton, ClosureTransportIcons::next);
+    setControlIcon(previousButton, ClosureTransportIcons::previous);
+    setControlIcon(playButton, ClosureTransportIcons::play);
+    setControlIcon(stopButton, ClosureTransportIcons::stop);
+    setControlIcon(nextButton, ClosureTransportIcons::next);
+    setControlIcon(repeatButton, ClosureTransportIcons::repeat);
 
     repeatButton.setComponentID("option");
     repeatButton.setTooltip("Cycle repeat mode");
@@ -387,7 +390,7 @@ void PlayerPanel::resized()
     auto actionRow = transport;
 
     auto options = actionRow.removeFromLeft(204);
-    repeatButton.setBounds(options.removeFromLeft(98).withSizeKeepingCentre(98, 34));
+    repeatButton.setBounds(options.removeFromLeft(44).withSizeKeepingCentre(44, 34));
     options.removeFromLeft(8);
     gaplessButton.setBounds(options.removeFromLeft(98).withSizeKeepingCentre(98, 34));
 
@@ -697,14 +700,22 @@ void PlayerPanel::updateControlLabels()
 {
     const auto hasActiveTracks = currentState.hasFile;
     const auto hasQueueTracks = !currentState.playlistPaths.isEmpty();
-    setTransportIcon(playButton,
-                     currentState.isPlaying ? ClosureTransportIcons::pause
-                                             : ClosureTransportIcons::play);
+    setControlIcon(playButton,
+                   currentState.isPlaying ? ClosureTransportIcons::pause
+                                           : ClosureTransportIcons::play);
     playButton.setTooltip(currentState.isPlaying ? "Pause" : "Play");
     playButton.setName(currentState.isPlaying ? "Pause" : "Play");
-    repeatButton.setButtonText(repeatModeText());
-    repeatButton.setToggleState(currentState.repeatMode != AudioEngine::RepeatMode::off,
-                                juce::dontSendNotification);
+    const auto repeatIsOne = currentState.repeatMode == AudioEngine::RepeatMode::single;
+    const auto repeatIsOff = currentState.repeatMode == AudioEngine::RepeatMode::off;
+    setControlIcon(repeatButton,
+                   repeatIsOne ? ClosureTransportIcons::repeatOne
+                               : ClosureTransportIcons::repeat,
+                   repeatIsOff ? GlassLookAndFeel::inkMuted()
+                               : GlassLookAndFeel::accent());
+    repeatButton.setTooltip(repeatIsOff ? "Repeat: Off"
+                                        : (repeatIsOne ? "Repeat: One" : "Repeat: All"));
+    repeatButton.setName(repeatIsOff ? "Repeat: Off"
+                                     : (repeatIsOne ? "Repeat: One" : "Repeat: All"));
     gaplessButton.setButtonText(currentState.gaplessPlayback ? "Gapless: On" : "Gapless: Off");
     gaplessButton.setToggleState(currentState.gaplessPlayback, juce::dontSendNotification);
     updateVisualModeLabel();
@@ -828,21 +839,6 @@ double PlayerPanel::durationAt(int index) const
     return currentState.queueIsActive && index == currentState.currentTrackIndex
          ? currentState.lengthSeconds
          : 0.0;
-}
-
-juce::String PlayerPanel::repeatModeText() const
-{
-    switch (currentState.repeatMode)
-    {
-        case AudioEngine::RepeatMode::off:
-            return "Repeat: Off";
-        case AudioEngine::RepeatMode::single:
-            return "Repeat: One";
-        case AudioEngine::RepeatMode::playlist:
-            return "Repeat: All";
-    }
-
-    return "Repeat: Off";
 }
 
 void PlayerPanel::drawArtwork(juce::Graphics& g,

@@ -44,7 +44,6 @@ private:
     juce::String artistAt(int index) const;
     juce::String albumAt(int index) const;
     double durationAt(int index) const;
-    juce::String repeatModeText() const;
 
     void drawArtwork(juce::Graphics& g,
                      juce::Rectangle<float> bounds,
@@ -90,7 +89,7 @@ private:
     juce::DrawableButton playButton { "Play", juce::DrawableButton::ImageFitted };
     juce::DrawableButton stopButton { "Stop", juce::DrawableButton::ImageFitted };
     juce::DrawableButton nextButton { "Next track", juce::DrawableButton::ImageFitted };
-    juce::TextButton repeatButton { "Repeat" };
+    juce::DrawableButton repeatButton { "Repeat mode", juce::DrawableButton::ImageFitted };
     juce::TextButton gaplessButton { "Gapless" };
     juce::TextButton visualModeButton { "Spectrum" };
     juce::Slider positionSlider;
