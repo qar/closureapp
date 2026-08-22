@@ -29,6 +29,8 @@ private:
     void openAlbumChooser();
     void chooseAlbumArtwork(const juce::String& albumId);
     void editAlbum(const juce::String& albumId);
+    void matchAlbumMetadata(const juce::String& albumId);
+    void setMetadataMatching(bool matching);
     void playAlbum(const juce::String& albumId, int startTrackIndex = 0);
     void playAlbumTrack(const juce::String& albumId, const juce::File& file);
     void addAlbumToQueue(const juce::String& albumId);
@@ -39,6 +41,7 @@ private:
     void rebuildPlaylistRows();
     void updateControlLabels();
     void updateSpectrum();
+    void updateCurrentTrackDisplay();
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
 
@@ -105,6 +108,7 @@ private:
     bool showingAlbums = false;
     AudioEngine::State currentState;
     MusicLibrary::State libraryState;
+    TrackMetadataPtr currentPlaybackMetadata;
     std::vector<int> visibleTrackIndices;
     juce::dsp::FFT spectrumFft;
     juce::dsp::WindowingFunction<float> spectrumWindow;

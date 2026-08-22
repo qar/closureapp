@@ -17,7 +17,7 @@
 | 播放 / 暂停 / 停止 / 进度 / 音量 | 均衡器、DSP 插件宿主 |
 | 标准 macOS 窗口 + 简洁毛玻璃 UI | Windows / Linux / iOS / Android |
 | 常见格式（系统解码 + JUCE 基础格式） | Google Drive / 流媒体 |
-| | 歌词、封面抓取、在线元数据 |
+| | 歌词、流媒体 |
 
 ## 架构草图
 
@@ -34,6 +34,7 @@
 - `AudioEngine`：深模块——打开文件、播控、状态回调；UI 不碰设备细节。
 - `PlayerPanel` / `GlassLookAndFeel`：可换肤的布局与控件层。
 - 曲库、云盘：作为后续 adapter，不进 v1 主路径。
+- 曲库支持用户显式触发的 MusicBrainz metadata 匹配，不在导入时自动联网。
 
 ## 音质方向（后续迭代）
 

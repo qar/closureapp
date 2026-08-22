@@ -271,6 +271,10 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     {
         removeAlbum(albumId);
     });
+    albumBrowser.setMatchMetadataCallback([this](const juce::String& albumId)
+    {
+        matchAlbumMetadata(albumId);
+    });
     addAndMakeVisible(albumBrowser);
 
     emptyStateLabel.setVisible(true);
@@ -317,14 +321,14 @@ void PlayerPanel::paint(juce::Graphics& g)
     {
         drawSpectrum(g,
                      spectrumBounds.toFloat(),
-                     currentState.currentTrackMetadata,
+                     currentPlaybackMetadata,
                      currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
     else
     {
         drawArtwork(g,
                     artworkBounds.toFloat(),
-                    currentState.currentTrackMetadata,
+                    currentPlaybackMetadata,
                     currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
 }
@@ -339,11 +343,9 @@ void PlayerPanel::resized()
     const auto showingAlbumDetails = showingAlbums && albumBrowser.isShowingDetails();
     viewTabs.setVisible(!showingAlbumDetails);
     backToAlbumsButton.setVisible(showingAlbumDetails);
+    auto navigationBar = panelBounds.removeFromTop(tabBarHeight);
     if (!showingAlbumDetails)
-    {
-        auto tabBar = panelBounds.removeFromTop(tabBarHeight);
-        viewTabs.setBounds(tabBar.withSizeKeepingCentre(180, 34));
-    }
+        viewTabs.setBounds(navigationBar.withSizeKeepingCentre(180, 34));
 
     panelBounds.removeFromTop(sectionGap);
 
@@ -360,6 +362,15 @@ void PlayerPanel::resized()
     nowPlayingBounds = mainArea.removeFromLeft(leftWidth);
     mainArea.removeFromLeft(juce::jmin(sectionGap, mainArea.getWidth()));
     playlistBounds = mainArea;
+
+    if (showingAlbumDetails)
+    {
+        const auto backArea = juce::Rectangle<int>(playlistBounds.getX() + 20,
+                                                   navigationBar.getY(),
+                                                   160,
+                                                   navigationBar.getHeight());
+        backToAlbumsButton.setBounds(backArea.withSizeKeepingCentre(140, 30));
+    }
 
     auto playbackArea = nowPlayingBounds.reduced(24, 18);
 
@@ -427,9 +438,6 @@ void PlayerPanel::resized()
     auto playlistArea = playlistBounds.reduced(20, 18);
     if (showingAlbumDetails)
     {
-        auto detailNavigation = playlistArea.removeFromTop(34);
-        backToAlbumsButton.setBounds(detailNavigation.removeFromLeft(160)
-                                          .withSizeKeepingCentre(140, 30));
         playlistArea.removeFromTop(12);
     }
     else
@@ -491,29 +499,7 @@ void PlayerPanel::applyState(const AudioEngine::State& state)
     currentState = state;
     albumBrowser.setPlaybackState(currentState.activePlaylistId, currentState.filePath);
     rebuildPlaylistRows();
-
-    if (currentState.filePath.isNotEmpty())
-    {
-        const auto metadata = currentState.currentTrackMetadata;
-        currentTitleLabel.setText(metadata != nullptr && metadata->title.isNotEmpty()
-                                      ? metadata->title
-                                      : juce::File(currentState.filePath).getFileNameWithoutExtension(),
-                                  juce::dontSendNotification);
-        currentArtistLabel.setText(metadata != nullptr && metadata->artist.isNotEmpty()
-                                       ? metadata->artist
-                                       : "Unknown Artist",
-                                   juce::dontSendNotification);
-        currentAlbumLabel.setText(metadata != nullptr && metadata->album.isNotEmpty()
-                                      ? metadata->album
-                                      : currentState.activePlaylistName,
-                                  juce::dontSendNotification);
-    }
-    else
-    {
-        currentTitleLabel.setText("Nothing playing", juce::dontSendNotification);
-        currentArtistLabel.setText("Add audio files or folders to begin", juce::dontSendNotification);
-        currentAlbumLabel.setText("", juce::dontSendNotification);
-    }
+    updateCurrentTrackDisplay();
 
     if (!showingAlbums)
     {
@@ -549,12 +535,45 @@ void PlayerPanel::applyLibraryState(const MusicLibrary::State& state)
 {
     libraryState = state;
     albumBrowser.setState(state);
+    updateCurrentTrackDisplay();
     if (showingAlbums)
     {
         playlistInfoLabel.setText(juce::String(libraryState.albums.size())
                                       + (libraryState.albums.size() == 1 ? " album" : " albums"),
                                   juce::dontSendNotification);
     }
+}
+
+void PlayerPanel::updateCurrentTrackDisplay()
+{
+    currentPlaybackMetadata = musicLibrary.metadataForPlayback(
+        juce::File(currentState.filePath),
+        currentState.currentTrackMetadata);
+
+    if (currentState.filePath.isNotEmpty())
+    {
+        const auto metadata = currentPlaybackMetadata;
+        currentTitleLabel.setText(metadata != nullptr && metadata->title.isNotEmpty()
+                                      ? metadata->title
+                                      : juce::File(currentState.filePath).getFileNameWithoutExtension(),
+                                  juce::dontSendNotification);
+        currentArtistLabel.setText(metadata != nullptr && metadata->artist.isNotEmpty()
+                                       ? metadata->artist
+                                       : "Unknown Artist",
+                                   juce::dontSendNotification);
+        currentAlbumLabel.setText(metadata != nullptr && metadata->album.isNotEmpty()
+                                      ? metadata->album
+                                      : currentState.activePlaylistName,
+                                  juce::dontSendNotification);
+    }
+    else
+    {
+        currentTitleLabel.setText("Nothing playing", juce::dontSendNotification);
+        currentArtistLabel.setText("Add audio files or folders to begin", juce::dontSendNotification);
+        currentAlbumLabel.setText("", juce::dontSendNotification);
+    }
+
+    repaint(artworkBounds);
 }
 
 void PlayerPanel::openFileChooser()
@@ -681,7 +700,126 @@ void PlayerPanel::editAlbum(const juce::String& albumId)
 
                                     delete editor;
                                 }),
-                            false);
+                             false);
+}
+
+void PlayerPanel::setMetadataMatching(bool matching)
+{
+    albumBrowser.setMetadataMatching(matching);
+    viewTabs.setEnabled(!matching);
+    backToAlbumsButton.setEnabled(!matching);
+}
+
+void PlayerPanel::matchAlbumMetadata(const juce::String& albumId)
+{
+    setMetadataMatching(true);
+    const juce::Component::SafePointer<PlayerPanel> safePanel { this };
+    musicLibrary.searchMetadataAsync(
+        albumId,
+        [safePanel, albumId](std::vector<MusicBrainz::ReleaseCandidate> candidates,
+                             juce::String error) mutable
+        {
+            if (safePanel == nullptr)
+                return;
+
+            safePanel->setMetadataMatching(false);
+            if (candidates.empty())
+            {
+                juce::AlertWindow::showMessageBoxAsync(
+                    juce::MessageBoxIconType::WarningIcon,
+                    "Match metadata",
+                    error.isNotEmpty() ? error : "No MusicBrainz releases matched this album.");
+                return;
+            }
+
+            juce::StringArray choices;
+            for (const auto& candidate : candidates)
+            {
+                juce::String choice = candidate.title;
+                if (candidate.artist.isNotEmpty())
+                    choice << " - " << candidate.artist;
+
+                juce::String details;
+                if (candidate.date.isNotEmpty())
+                    details << candidate.date;
+                if (candidate.country.isNotEmpty())
+                    details << (details.isEmpty() ? "" : ", ") << candidate.country;
+                if (candidate.trackCount > 0)
+                    details << (details.isEmpty() ? "" : ", ")
+                            << juce::String(candidate.trackCount) << " tracks";
+                if (candidate.status.isNotEmpty())
+                    details << (details.isEmpty() ? "" : ", ") << candidate.status;
+                if (candidate.disambiguation.isNotEmpty())
+                    details << (details.isEmpty() ? "" : ", ") << candidate.disambiguation;
+
+                if (details.isNotEmpty())
+                    choice << " (" << details << ")";
+                choices.add(choice);
+            }
+
+            auto* chooser = new juce::AlertWindow(
+                "Match metadata",
+                "Choose the MusicBrainz release that matches this album.",
+                juce::AlertWindow::NoIcon);
+            chooser->addComboBox("release", choices, "Release");
+            chooser->addButton("Apply", 1, juce::KeyPress(juce::KeyPress::returnKey));
+            chooser->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+
+            chooser->enterModalState(
+                true,
+                juce::ModalCallbackFunction::create(
+                    [safePanel,
+                     chooser,
+                     albumId,
+                     selectedCandidates = std::move(candidates)](int result) mutable
+                    {
+                        if (result == 1 && safePanel != nullptr)
+                        {
+                            const auto* combo = chooser->getComboBoxComponent("release");
+                            const auto selection = combo != nullptr
+                                                 ? combo->getSelectedItemIndex()
+                                                 : -1;
+                            if (juce::isPositiveAndBelow(selection,
+                                                         static_cast<int>(selectedCandidates.size())))
+                            {
+                                safePanel->setMetadataMatching(true);
+                                safePanel->musicLibrary.applyMetadataAsync(
+                                    albumId,
+                                    selectedCandidates[static_cast<size_t>(selection)].id,
+                                    [safePanel](MusicLibrary::MetadataApplyResult applyResult)
+                                    {
+                                        if (safePanel == nullptr)
+                                            return;
+
+                                        safePanel->setMetadataMatching(false);
+                                        if (!applyResult.success)
+                                        {
+                                            juce::AlertWindow::showMessageBoxAsync(
+                                                juce::MessageBoxIconType::WarningIcon,
+                                                "Match metadata",
+                                                applyResult.error);
+                                            return;
+                                        }
+
+                                        juce::String message =
+                                            "Album metadata was updated. "
+                                            + juce::String(applyResult.updatedTracks)
+                                            + " tracks matched.";
+                                        if (applyResult.artworkApplied)
+                                            message << " Cover art was downloaded.";
+
+                                        juce::AlertWindow::showMessageBoxAsync(
+                                            juce::MessageBoxIconType::InfoIcon,
+                                            "Match metadata",
+                                            message);
+                                    });
+                            }
+                        }
+
+                        delete chooser;
+                    }),
+                false);
+        });
 }
 
 void PlayerPanel::playAlbum(const juce::String& albumId, int startTrackIndex)
@@ -745,6 +883,7 @@ void PlayerPanel::removeAlbum(const juce::String& albumId)
 
 void PlayerPanel::showAlbumView()
 {
+    setMetadataMatching(false);
     showingAlbums = true;
     albumBrowser.showAlbumList();
     playlistList.setVisible(false);
@@ -759,6 +898,7 @@ void PlayerPanel::showAlbumView()
 
 void PlayerPanel::showQueueView()
 {
+    setMetadataMatching(false);
     showingAlbums = false;
     playlistList.setVisible(true);
     albumBrowser.setVisible(false);
@@ -892,7 +1032,13 @@ TrackMetadataPtr PlayerPanel::metadataAt(int index) const
     if (!juce::isPositiveAndBelow(index, static_cast<int>(currentState.playlistMetadata.size())))
         return nullptr;
 
-    return currentState.playlistMetadata[static_cast<size_t>(index)];
+    const auto metadata = currentState.playlistMetadata[static_cast<size_t>(index)];
+    if (!juce::isPositiveAndBelow(index, currentState.playlistPaths.size()))
+        return metadata;
+
+    return musicLibrary.metadataForPlayback(
+        juce::File(currentState.playlistPaths[index]),
+        metadata);
 }
 
 juce::String PlayerPanel::titleAt(int index) const

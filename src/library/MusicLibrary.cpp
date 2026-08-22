@@ -66,6 +66,106 @@ juce::String readAttribute(const juce::XmlElement& element, const char* name)
 {
     return element.getStringAttribute(name).trim();
 }
+
+juce::String normalizedMatchValue(juce::String value)
+{
+    return value.trim().toLowerCase().removeCharacters(" \t\r\n-_.()[]{}'\"!,?:;/");
+}
+
+int trackNumberForMatch(const MusicLibrary::Track& track)
+{
+    if (track.trackNumber > 0)
+        return track.trackNumber;
+
+    const auto filename = track.file.getFileNameWithoutExtension();
+    const auto separator = filename.indexOfAnyOf(" -_.");
+    if (separator <= 0 || separator > 3)
+        return 0;
+
+    const auto prefix = filename.substring(0, separator);
+    return prefix.containsOnly("0123456789") ? prefix.getIntValue() : 0;
+}
+
+juce::String normalizedTrackTitle(const MusicLibrary::Track& track)
+{
+    auto title = track.title.trim();
+    const auto tokens = juce::StringArray::fromTokens(title, "_", "");
+    for (int index = 0; index < tokens.size(); ++index)
+    {
+        const auto token = tokens[index].trim();
+        if (token.isNotEmpty()
+            && token.length() <= 3
+            && token.containsOnly("0123456789")
+            && token.getIntValue() > 0
+            && index + 1 < tokens.size())
+        {
+            title = tokens.joinIntoString("_", index + 1);
+            break;
+        }
+    }
+
+    const auto separator = title.indexOfAnyOf(" -_.");
+    if (separator > 0 && separator <= 3)
+    {
+        const auto prefix = title.substring(0, separator);
+        if (prefix.containsOnly("0123456789"))
+            title = title.substring(separator + 1);
+    }
+
+    return normalizedMatchValue(title);
+}
+
+int findOnlineTrack(const MusicLibrary::Track& localTrack,
+                   const std::vector<MusicBrainz::Track>& onlineTracks,
+                   const std::vector<bool>& usedTracks,
+                   int localIndex,
+                   bool onlineHasMultipleDiscs,
+                   bool allowPositionalMatch)
+{
+    const auto localTrackNumber = trackNumberForMatch(localTrack);
+    if (localTrackNumber > 0
+        && (!onlineHasMultipleDiscs || localTrack.discNumber > 0))
+    {
+        for (size_t index = 0; index < onlineTracks.size(); ++index)
+        {
+            const auto& onlineTrack = onlineTracks[index];
+            if (usedTracks[index]
+                || onlineTrack.trackNumber != localTrackNumber
+                || (localTrack.discNumber > 0
+                    && onlineTrack.discNumber != localTrack.discNumber))
+            {
+                continue;
+            }
+
+            return static_cast<int>(index);
+        }
+    }
+
+    const auto localTitle = normalizedTrackTitle(localTrack);
+    if (localTitle.isNotEmpty())
+    {
+        for (size_t index = 0; index < onlineTracks.size(); ++index)
+        {
+            if (!usedTracks[index]
+                && localTitle == normalizedMatchValue(onlineTracks[index].title)
+                && (localTrack.discNumber == 0
+                    || onlineTracks[index].discNumber == localTrack.discNumber))
+            {
+                return static_cast<int>(index);
+            }
+        }
+    }
+
+    if (allowPositionalMatch
+        && onlineTracks.size() == usedTracks.size()
+        && juce::isPositiveAndBelow(localIndex, static_cast<int>(onlineTracks.size()))
+        && !usedTracks[static_cast<size_t>(localIndex)])
+    {
+        return localIndex;
+    }
+
+    return -1;
+}
 }
 
 int MusicLibrary::Album::availableTrackCount() const
@@ -91,6 +191,7 @@ MusicLibrary::MusicLibrary()
 }
 
 MusicLibrary::MusicLibrary(const juce::File& storageDirectory)
+    : onlineMetadataClient(std::make_unique<MusicBrainzClient>())
 {
     lifetime = std::make_shared<std::atomic_bool>(true);
     libraryFile = storageDirectory.getChildFile("library.xml");
@@ -313,6 +414,8 @@ bool MusicLibrary::renameAlbum(const juce::String& albumId,
 
     juce::String oldTitle;
     juce::String oldArtist;
+    bool oldCustomTitle = false;
+    bool oldCustomArtist = false;
     {
         const juce::ScopedLock sl(stateLock);
         const auto it = std::find_if(albums.begin(), albums.end(), [&albumId](const auto& album)
@@ -325,8 +428,12 @@ bool MusicLibrary::renameAlbum(const juce::String& albumId,
 
         oldTitle = it->title;
         oldArtist = it->artist;
+        oldCustomTitle = it->customTitle;
+        oldCustomArtist = it->customArtist;
         it->title = cleanTitle;
         it->artist = cleanArtist;
+        it->customTitle = true;
+        it->customArtist = true;
     }
 
     if (!saveLibrary())
@@ -340,6 +447,8 @@ bool MusicLibrary::renameAlbum(const juce::String& albumId,
         {
             it->title = oldTitle;
             it->artist = oldArtist;
+            it->customTitle = oldCustomTitle;
+            it->customArtist = oldCustomArtist;
         }
         return false;
     }
@@ -410,6 +519,263 @@ bool MusicLibrary::setCustomArtwork(const juce::String& albumId,
     return true;
 }
 
+void MusicLibrary::searchMetadataAsync(const juce::String& albumId,
+                                       MetadataSearchCallback callback)
+{
+    if (!callback)
+        return;
+
+    const auto album = getAlbum(albumId);
+    if (!album.has_value())
+    {
+        juce::MessageManager::callAsync([callbackForMessage = std::move(callback)]() mutable
+        {
+            if (callbackForMessage)
+                callbackForMessage({}, "The album could not be found.");
+        });
+        return;
+    }
+
+    const auto lifetimeCopy = lifetime;
+    onlineMetadataClient->searchReleases(album->title,
+                                         album->artist == defaultArtist() ? juce::String{}
+                                                                           : album->artist,
+                                         [lifetimeCopy,
+                                          callbackForMessage = std::move(callback)](
+                                             std::vector<MusicBrainz::ReleaseCandidate> candidates,
+                                             juce::String error) mutable
+                                         {
+                                             if (lifetimeCopy->load() && callbackForMessage)
+                                                 callbackForMessage(std::move(candidates),
+                                                                    std::move(error));
+                                         });
+}
+
+void MusicLibrary::applyMetadataAsync(const juce::String& albumId,
+                                      const juce::String& releaseId,
+                                      MetadataApplyCallback callback)
+{
+    if (!callback)
+        return;
+
+    if (!getAlbum(albumId).has_value())
+    {
+        juce::MessageManager::callAsync([callbackForMessage = std::move(callback)]() mutable
+        {
+            if (callbackForMessage)
+            {
+                MetadataApplyResult result;
+                result.error = "The album could not be found.";
+                callbackForMessage(std::move(result));
+            }
+        });
+        return;
+    }
+
+    const auto lifetimeCopy = lifetime;
+    onlineMetadataClient->fetchRelease(
+        releaseId,
+        [this,
+         albumId,
+         lifetimeCopy,
+         callbackForMessage = std::move(callback)](
+            std::optional<MusicBrainz::ReleaseMetadata> metadata,
+            juce::String error) mutable
+        {
+            if (!lifetimeCopy->load())
+                return;
+
+            if (!metadata.has_value())
+            {
+                MetadataApplyResult result;
+                result.error = error.isNotEmpty() ? std::move(error)
+                                                   : "MusicBrainz metadata could not be loaded.";
+                callbackForMessage(std::move(result));
+                return;
+            }
+
+            callbackForMessage(applyMetadata(albumId, std::move(*metadata)));
+        });
+}
+
+MusicLibrary::MetadataApplyResult MusicLibrary::applyMetadata(
+    const juce::String& albumId,
+    MusicBrainz::ReleaseMetadata metadata)
+{
+    MetadataApplyResult result;
+    const auto existingAlbum = getAlbum(albumId);
+    if (!existingAlbum.has_value())
+    {
+        result.error = "The album could not be found.";
+        return result;
+    }
+
+    juce::File artworkDestination;
+    juce::File artworkBackup;
+    const auto shouldApplyArtwork = !existingAlbum->customArtwork
+                                 && metadata.artwork != nullptr
+                                 && metadata.artwork->isValid();
+    bool artworkWriteAttempted = false;
+    bool artworkApplied = false;
+    if (shouldApplyArtwork)
+    {
+        artworkDestination = artworkDirectory.getChildFile(albumId + ".png");
+        if (artworkDestination.existsAsFile())
+        {
+            artworkBackup = artworkDestination.getSiblingFile(
+                artworkDestination.getFileName() + ".previous");
+            artworkBackup.deleteFile();
+            if (!artworkDestination.copyFileTo(artworkBackup))
+                artworkBackup = juce::File{};
+        }
+
+        const auto canReplaceArtwork = !artworkDestination.existsAsFile()
+                                    || artworkBackup.existsAsFile();
+        if (canReplaceArtwork)
+        {
+            artworkWriteAttempted = true;
+            artworkApplied = saveArtworkToCache(albumId, *metadata.artwork, artworkDestination);
+        }
+    }
+
+    const auto restoreArtwork = [&artworkDestination, &artworkBackup]
+    {
+        if (artworkBackup.existsAsFile())
+        {
+            artworkDestination.deleteFile();
+            artworkBackup.moveFileTo(artworkDestination);
+        }
+        else if (artworkDestination.existsAsFile())
+        {
+            artworkDestination.deleteFile();
+        }
+    };
+
+    if (artworkWriteAttempted && !artworkApplied)
+        restoreArtwork();
+
+    const auto onlineHasMultipleDiscs = std::any_of(metadata.tracks.begin(),
+                                                    metadata.tracks.end(),
+                                                    [&metadata](const auto& track)
+    {
+        return track.discNumber > 1
+            || std::any_of(metadata.tracks.begin(), metadata.tracks.end(),
+                           [&track](const auto& other)
+        {
+            return other.discNumber != track.discNumber;
+        });
+    });
+
+    Album previousAlbum;
+    {
+        const juce::ScopedLock sl(stateLock);
+        const auto albumIt = std::find_if(albums.begin(), albums.end(), [&albumId](const auto& album)
+        {
+            return album.id == albumId;
+        });
+
+        if (albumIt == albums.end())
+        {
+            if (artworkApplied)
+                restoreArtwork();
+            result.error = "The album could not be found.";
+            return result;
+        }
+
+        previousAlbum = *albumIt;
+
+        if (!albumIt->customTitle && metadata.release.title.isNotEmpty())
+            albumIt->title = metadata.release.title;
+        if (!albumIt->customArtist && metadata.release.artist.isNotEmpty())
+            albumIt->artist = metadata.release.artist;
+        if (metadata.genre.isNotEmpty())
+            albumIt->genre = metadata.genre;
+        if (metadata.release.date.isNotEmpty())
+            albumIt->releaseDate = metadata.release.date;
+        if (metadata.release.id.isNotEmpty())
+            albumIt->musicBrainzReleaseId = metadata.release.id;
+        if (metadata.releaseGroupId.isNotEmpty())
+            albumIt->musicBrainzReleaseGroupId = metadata.releaseGroupId;
+
+        if (artworkApplied)
+        {
+            albumIt->artwork = metadata.artwork;
+            albumIt->artworkCache = artworkDestination;
+        }
+
+        const auto allowPositionalMatch = metadata.tracks.size() == albumIt->tracks.size()
+                                        && std::all_of(albumIt->tracks.begin(),
+                                                       albumIt->tracks.end(),
+                                                       [](const auto& track)
+        {
+            const auto fallback = TrackMetadataUtil::fallbackForFile(track.file);
+            return track.trackNumber == 0
+                && normalizedMatchValue(track.title) == normalizedMatchValue(fallback.title);
+        });
+        std::vector<bool> usedTracks(metadata.tracks.size(), false);
+        for (size_t index = 0; index < albumIt->tracks.size(); ++index)
+        {
+            auto& localTrack = albumIt->tracks[index];
+            const auto remoteIndex = findOnlineTrack(localTrack,
+                                                      metadata.tracks,
+                                                      usedTracks,
+                                                      static_cast<int>(index),
+                                                      onlineHasMultipleDiscs,
+                                                      allowPositionalMatch);
+            if (!juce::isPositiveAndBelow(remoteIndex,
+                                          static_cast<int>(metadata.tracks.size())))
+            {
+                continue;
+            }
+
+            const auto& remoteTrack = metadata.tracks[static_cast<size_t>(remoteIndex)];
+            usedTracks[static_cast<size_t>(remoteIndex)] = true;
+            ++result.updatedTracks;
+
+            if (remoteTrack.title.isNotEmpty())
+                localTrack.title = remoteTrack.title;
+            if (remoteTrack.artist.isNotEmpty())
+                localTrack.artist = remoteTrack.artist;
+            if (remoteTrack.genre.isNotEmpty())
+                localTrack.genre = remoteTrack.genre;
+            if (remoteTrack.recordingId.isNotEmpty())
+                localTrack.musicBrainzRecordingId = remoteTrack.recordingId;
+            if (remoteTrack.discNumber > 0)
+                localTrack.discNumber = remoteTrack.discNumber;
+            if (remoteTrack.trackNumber > 0)
+                localTrack.trackNumber = remoteTrack.trackNumber;
+            if (remoteTrack.durationSeconds > 0.0)
+                localTrack.durationSeconds = remoteTrack.durationSeconds;
+        }
+
+        sortTracks(*albumIt);
+    }
+
+    if (!saveLibrary())
+    {
+        const juce::ScopedLock sl(stateLock);
+        const auto albumIt = std::find_if(albums.begin(), albums.end(), [&albumId](const auto& album)
+        {
+            return album.id == albumId;
+        });
+        if (albumIt != albums.end())
+            *albumIt = std::move(previousAlbum);
+
+        if (artworkApplied)
+            restoreArtwork();
+
+        result.success = false;
+        result.error = "The library could not be saved.";
+        return result;
+    }
+
+    result.success = true;
+    result.artworkApplied = artworkApplied;
+    artworkBackup.deleteFile();
+    notifyState();
+    return result;
+}
+
 std::optional<MusicLibrary::Album> MusicLibrary::getAlbum(const juce::String& albumId) const
 {
     const juce::ScopedLock sl(stateLock);
@@ -438,6 +804,74 @@ juce::Array<juce::File> MusicLibrary::getPlayableFiles(const juce::String& album
     }
 
     return files;
+}
+
+TrackMetadataPtr MusicLibrary::metadataForPlayback(const juce::File& file,
+                                                   const TrackMetadataPtr& fallback) const
+{
+    if (file == juce::File{})
+        return fallback;
+
+    const juce::ScopedLock sl(stateLock);
+    for (const auto& album : albums)
+    {
+        const auto trackIt = std::find_if(album.tracks.begin(), album.tracks.end(),
+                                          [&file](const auto& track)
+        {
+            return samePath(track.file, file);
+        });
+        if (trackIt == album.tracks.end())
+            continue;
+
+        auto metadata = fallback != nullptr
+                      ? *fallback
+                      : TrackMetadataUtil::fallbackForFile(file);
+        metadata.file = file;
+
+        const auto hasCuratedMetadata = album.musicBrainzReleaseId.isNotEmpty()
+                                      || album.customTitle
+                                      || album.customArtist;
+        if (hasCuratedMetadata)
+        {
+            if (album.musicBrainzReleaseId.isNotEmpty()
+                && trackIt->musicBrainzRecordingId.isNotEmpty())
+            {
+                if (trackIt->title.isNotEmpty())
+                    metadata.title = trackIt->title;
+                if (trackIt->artist.isNotEmpty())
+                    metadata.artist = trackIt->artist;
+                if (trackIt->genre.isNotEmpty())
+                    metadata.genre = trackIt->genre;
+                if (trackIt->discNumber > 0)
+                    metadata.discNumber = trackIt->discNumber;
+                if (trackIt->trackNumber > 0)
+                    metadata.trackNumber = trackIt->trackNumber;
+            }
+
+            if (album.title.isNotEmpty())
+                metadata.album = album.title;
+            if (album.artist.isNotEmpty())
+            {
+                metadata.albumArtist = album.artist;
+                if (metadata.artist.isEmpty() || metadata.artist == "Unknown Artist")
+                    metadata.artist = album.artist;
+            }
+            if (metadata.genre.isEmpty() && album.genre.isNotEmpty())
+                metadata.genre = album.genre;
+        }
+
+        if (trackIt->durationSeconds > 0.0 && hasCuratedMetadata)
+            metadata.durationSeconds = trackIt->durationSeconds;
+
+        if (album.artwork != nullptr && album.artwork->isValid())
+            metadata.artwork = album.artwork;
+        else if (trackIt->artwork != nullptr && trackIt->artwork->isValid())
+            metadata.artwork = trackIt->artwork;
+
+        return std::make_shared<const TrackMetadata>(std::move(metadata));
+    }
+
+    return fallback;
 }
 
 MusicLibrary::State MusicLibrary::getState() const
@@ -533,7 +967,14 @@ void MusicLibrary::loadLibrary()
         album.id = readAttribute(*albumElement, "id");
         album.title = readAttribute(*albumElement, "title");
         album.artist = readAttribute(*albumElement, "artist");
+        album.genre = readAttribute(*albumElement, "genre");
+        album.releaseDate = readAttribute(*albumElement, "releaseDate");
+        album.musicBrainzReleaseId = readAttribute(*albumElement, "musicBrainzReleaseId");
+        album.musicBrainzReleaseGroupId = readAttribute(*albumElement,
+                                                        "musicBrainzReleaseGroupId");
         album.sourceFolder = juce::File(readAttribute(*albumElement, "sourceFolder"));
+        album.customTitle = albumElement->getBoolAttribute("customTitle", false);
+        album.customArtist = albumElement->getBoolAttribute("customArtist", false);
         const auto storedCustomArtwork = albumElement->getBoolAttribute("customArtwork", false);
         album.artworkCache = juce::File(readAttribute(*albumElement, "artworkCache"));
 
@@ -561,6 +1002,9 @@ void MusicLibrary::loadLibrary()
             track.file = juce::File(readAttribute(*trackElement, "path"));
             track.title = readAttribute(*trackElement, "title");
             track.artist = readAttribute(*trackElement, "artist");
+            track.genre = readAttribute(*trackElement, "genre");
+            track.musicBrainzRecordingId = readAttribute(*trackElement,
+                                                         "musicBrainzRecordingId");
             track.discNumber = trackElement->getIntAttribute("discNumber", 0);
             track.trackNumber = trackElement->getIntAttribute("trackNumber", 0);
             track.durationSeconds = trackElement->getDoubleAttribute("durationSeconds", 0.0);
@@ -589,7 +1033,7 @@ bool MusicLibrary::saveLibrary() const
 
     State state = getState();
     auto document = std::make_unique<juce::XmlElement>("library");
-    document->setAttribute("version", 1);
+    document->setAttribute("version", 2);
 
     for (const auto& album : state.albums)
     {
@@ -597,6 +1041,12 @@ bool MusicLibrary::saveLibrary() const
         albumElement->setAttribute("id", album.id);
         albumElement->setAttribute("title", album.title);
         albumElement->setAttribute("artist", album.artist);
+        albumElement->setAttribute("genre", album.genre);
+        albumElement->setAttribute("releaseDate", album.releaseDate);
+        albumElement->setAttribute("musicBrainzReleaseId", album.musicBrainzReleaseId);
+        albumElement->setAttribute("musicBrainzReleaseGroupId", album.musicBrainzReleaseGroupId);
+        albumElement->setAttribute("customTitle", album.customTitle);
+        albumElement->setAttribute("customArtist", album.customArtist);
         albumElement->setAttribute("sourceFolder", album.sourceFolder.getFullPathName());
         albumElement->setAttribute("customArtwork", album.customArtwork);
         albumElement->setAttribute("artworkCache", album.artworkCache.getFullPathName());
@@ -607,6 +1057,8 @@ bool MusicLibrary::saveLibrary() const
             trackElement->setAttribute("path", track.file.getFullPathName());
             trackElement->setAttribute("title", track.title);
             trackElement->setAttribute("artist", track.artist);
+            trackElement->setAttribute("genre", track.genre);
+            trackElement->setAttribute("musicBrainzRecordingId", track.musicBrainzRecordingId);
             trackElement->setAttribute("discNumber", track.discNumber);
             trackElement->setAttribute("trackNumber", track.trackNumber);
             trackElement->setAttribute("durationSeconds", track.durationSeconds);
@@ -669,25 +1121,33 @@ void MusicLibrary::metadataReady(const juce::String& albumId, TrackMetadata meta
             return;
 
         const auto fallback = TrackMetadataUtil::fallbackForFile(metadata.file);
-        if (metadata.title.isNotEmpty() && (metadata.title != fallback.title || trackIt->title.isEmpty()))
+        const auto hasOnlineTrackMetadata = trackIt->musicBrainzRecordingId.isNotEmpty();
+        if (!hasOnlineTrackMetadata
+            && metadata.title.isNotEmpty()
+            && (metadata.title != fallback.title || trackIt->title.isEmpty()))
             trackIt->title = metadata.title;
-        if (metadata.artist.isNotEmpty() && (metadata.artist != fallback.artist || trackIt->artist.isEmpty()))
+        if (!hasOnlineTrackMetadata
+            && metadata.artist.isNotEmpty()
+            && (metadata.artist != fallback.artist || trackIt->artist.isEmpty()))
             trackIt->artist = metadata.artist;
-        if (metadata.discNumber > 0)
+        if (!hasOnlineTrackMetadata && metadata.genre.isNotEmpty())
+            trackIt->genre = metadata.genre;
+        if (!hasOnlineTrackMetadata && metadata.discNumber > 0)
             trackIt->discNumber = metadata.discNumber;
-        if (metadata.trackNumber > 0)
+        if (!hasOnlineTrackMetadata && metadata.trackNumber > 0)
             trackIt->trackNumber = metadata.trackNumber;
         if (metadata.durationSeconds > 0.0)
             trackIt->durationSeconds = metadata.durationSeconds;
 
-        if (albumIt->artist == defaultArtist())
+        if (albumIt->musicBrainzReleaseId.isEmpty() && albumIt->artist == defaultArtist())
         {
             const auto artist = metadata.albumArtist.isNotEmpty() ? metadata.albumArtist : metadata.artist;
             if (artist.isNotEmpty() && artist != defaultArtist())
                 albumIt->artist = artist;
         }
 
-        if (albumIt->title == defaultTitleFor(albumIt->sourceFolder)
+        if (albumIt->musicBrainzReleaseId.isEmpty()
+            && albumIt->title == defaultTitleFor(albumIt->sourceFolder)
             && metadata.album.isNotEmpty()
             && metadata.album != "Local Files")
             albumIt->title = metadata.album;

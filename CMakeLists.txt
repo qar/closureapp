@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(ClosureApp VERSION 0.2.2 LANGUAGES C CXX OBJC OBJCXX)
+project(ClosureApp VERSION 0.2.3 LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,6 +32,8 @@ target_sources(ClosureApp
         src/audio/TrackMetadata.h
         src/audio/TrackMetadata.cpp
         src/audio/TrackMetadataReader.mm
+        src/metadata/MusicBrainzClient.h
+        src/metadata/MusicBrainzClient.cpp
         src/library/MusicLibrary.h
         src/library/MusicLibrary.cpp
         src/ui/AlbumBrowser.h
@@ -105,6 +107,8 @@ if(CLOSURE_BUILD_TESTS)
             src/audio/TrackMetadata.h
             src/audio/TrackMetadata.cpp
             src/audio/TrackMetadataReader.mm
+            src/metadata/MusicBrainzClient.h
+            src/metadata/MusicBrainzClient.cpp
             src/library/MusicLibrary.h
             src/library/MusicLibrary.cpp
             src/ui/AlbumBrowser.h

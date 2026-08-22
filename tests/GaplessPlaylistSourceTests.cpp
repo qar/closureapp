@@ -1,7 +1,16 @@
 #include <JuceHeader.h>
 #include "audio/GaplessPlaylistSource.h"
 #include "audio/TrackMetadata.h"
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
 #include "library/MusicLibrary.h"
+#undef private
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #include "ui/AlbumBrowser.h"
 
 #include <cmath>
@@ -180,6 +189,100 @@ bool testMusicLibrary()
     return passed;
 }
 
+bool testOnlineMetadataMatchesFilenameTitles()
+{
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("closure-online-metadata-tests");
+    root.deleteRecursively();
+    if (!expect(root.createDirectory(), "create online metadata test directory"))
+        return false;
+
+    const auto albumFolder = root.getChildFile("Automatica");
+    if (!expect(albumFolder.createDirectory(), "create online metadata album folder"))
+        return false;
+
+    const juce::StringArray filenames {
+        "Nigel Stanford_Automatica_01_Automatica.wav",
+        "Nigel Stanford_Automatica_02_One Hundred Hunters.wav",
+        "Nigel Stanford_Automatica_03_If I Go Down.wav"
+    };
+    for (const auto& filename : filenames)
+    {
+        if (!expect(writeConstantWav(albumFolder.getChildFile(filename), 0.25f, 8),
+                    "write online metadata fixture"))
+        {
+            root.deleteRecursively();
+            return false;
+        }
+    }
+
+    MusicLibrary library(root.getChildFile("storage"));
+    const auto added = library.addAlbum(albumFolder);
+    if (!expect(added.success, "add online metadata album"))
+    {
+        root.deleteRecursively();
+        return false;
+    }
+
+    MusicBrainz::ReleaseMetadata metadata;
+    metadata.release.id = "release-id";
+    metadata.release.title = "Automatica";
+    metadata.release.artist = "Nigel Stanford";
+    metadata.release.date = "2017-09-15";
+    metadata.genre = "electronic";
+    juce::Image metadataArtwork(juce::Image::RGB, 16, 16, true);
+    juce::Graphics artworkGraphics(metadataArtwork);
+    artworkGraphics.fillAll(juce::Colours::darkblue);
+    metadata.artwork = std::make_shared<const juce::Image>(metadataArtwork);
+
+    const juce::StringArray titles {
+        "Automatica",
+        "One Hundred Hunters",
+        "If I Go Down",
+        "Everything Changed"
+    };
+    for (int index = 0; index < titles.size(); ++index)
+    {
+        MusicBrainz::Track track;
+        track.title = titles[index];
+        track.artist = "Nigel Stanford";
+        track.recordingId = "recording-" + juce::String(index + 1);
+        track.trackNumber = index + 1;
+        track.discNumber = 1;
+        metadata.tracks.push_back(std::move(track));
+    }
+
+    const auto result = library.applyMetadata(added.albumId, std::move(metadata));
+    const auto album = library.getAlbum(added.albumId);
+    const auto fallbackMetadata = album.has_value() && !album->tracks.empty()
+                                ? std::make_shared<const TrackMetadata>(
+                                      TrackMetadataUtil::fallbackForFile(album->tracks.front().file))
+                                : nullptr;
+    const auto playbackMetadata = album.has_value() && !album->tracks.empty()
+                                ? library.metadataForPlayback(album->tracks.front().file,
+                                                              fallbackMetadata)
+                                : nullptr;
+    bool passed = expect(result.success, "apply online metadata")
+               && expect(result.updatedTracks == 3,
+                         "match filename titles when release track count differs")
+               && expect(album.has_value() && album->tracks.size() == 3,
+                         "keep local track count after online metadata")
+               && expect(album.has_value() && album->tracks[0].title == "Automatica",
+                          "update first track title")
+               && expect(album.has_value() && album->tracks[0].artist == "Nigel Stanford",
+                          "update first track artist")
+               && expect(playbackMetadata != nullptr
+                             && playbackMetadata->title == "Automatica",
+                         "use online title for playback metadata")
+               && expect(playbackMetadata != nullptr
+                             && playbackMetadata->artist == "Nigel Stanford",
+                         "use online artist for playback metadata")
+               && expect(playbackMetadata != nullptr && playbackMetadata->hasArtwork(),
+                         "use online artwork for playback metadata");
+    root.deleteRecursively();
+    return passed;
+}
+
 } // namespace
 
 int main()
@@ -205,7 +308,19 @@ int main()
         return 1;
     }
 
+    const auto artistCredit = juce::JSON::parse(
+        R"({"artist-credit":[{"name":"Nigel Stanford","joinphrase":" feat. "},{"name":"Dallin Applebaum","joinphrase":""}]})");
+    if (!expect(MusicBrainz::formatArtistCredit(artistCredit)
+                    == "Nigel Stanford feat. Dallin Applebaum",
+                "preserve artist credit joinphrase spacing"))
+    {
+        return 1;
+    }
+
     if (!testMusicLibrary())
+        return 1;
+
+    if (!testOnlineMetadataMatchesFilenameTitles())
         return 1;
 
     if (!testAlbumBrowserGridLayout())

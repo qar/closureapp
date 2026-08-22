@@ -383,21 +383,40 @@ void AlbumBrowser::resized()
     }
 
     auto area = getLocalBounds().reduced(4);
-    auto top = area.removeFromTop(38);
-    backButton.setBounds(top.removeFromLeft(84).withSizeKeepingCentre(78, 30));
-    moreButton.setBounds(top.removeFromRight(76).withSizeKeepingCentre(70, 30));
+    if (backButton.isVisible())
+    {
+        auto top = area.removeFromTop(38);
+        backButton.setBounds(top.removeFromLeft(84).withSizeKeepingCentre(78, 30));
+        moreButton.setBounds(top.removeFromRight(76).withSizeKeepingCentre(70, 30));
+    }
 
-    const auto detailHeight = juce::jmin(218, juce::jmax(148, area.getHeight() / 2));
+    const auto detailHeight = juce::jmin(190, juce::jmax(148, area.getHeight() / 2));
     auto details = area.removeFromTop(detailHeight);
     auto artworkArea = details.removeFromLeft(164);
     const auto coverSize = juce::jmin(150, juce::jmax(0, artworkArea.getHeight() - 8));
-    detailArtworkBounds = artworkArea.withSizeKeepingCentre(coverSize, coverSize).toFloat();
+    detailArtworkBounds = juce::Rectangle<int>(artworkArea.getCentreX() - coverSize / 2,
+                                               artworkArea.getY(),
+                                               coverSize,
+                                               coverSize)
+                              .toFloat();
 
-    detailTitle.setBounds(details.withTrimmedLeft(20).removeFromTop(32));
-    detailArtist.setBounds(details.withTrimmedLeft(20).withTrimmedTop(38).removeFromTop(25));
-    detailInfo.setBounds(details.withTrimmedLeft(20).withTrimmedTop(68).removeFromTop(24));
+    auto text = details.withTrimmedLeft(20);
+    if (!backButton.isVisible())
+    {
+        auto titleRow = text.removeFromTop(34);
+        moreButton.setBounds(titleRow.removeFromRight(84).withSizeKeepingCentre(76, 30));
+        detailTitle.setBounds(titleRow);
+    }
+    else
+    {
+        detailTitle.setBounds(text.removeFromTop(34));
+    }
 
-    auto actions = details.withTrimmedLeft(20).withTrimmedTop(108).removeFromTop(38);
+    detailArtist.setBounds(text.removeFromTop(25));
+    text.removeFromTop(10);
+    detailInfo.setBounds(text.removeFromTop(24));
+
+    auto actions = text.withTrimmedTop(12).removeFromTop(38);
     playButton.setBounds(actions.removeFromLeft(112));
     actions.removeFromLeft(8);
     addToQueueButton.setBounds(actions.removeFromLeft(120));
@@ -444,6 +463,7 @@ void AlbumBrowser::setPlaybackState(const juce::String& playlistId,
 void AlbumBrowser::showAlbumList()
 {
     selectedAlbumId.reset();
+    setMetadataMatching(false);
     gridViewport.setVisible(true);
     trackList.setVisible(false);
     backButton.setVisible(false);
@@ -497,9 +517,22 @@ void AlbumBrowser::setRemoveAlbumCallback(AlbumCallback callback)
     removeAlbumCallback = std::move(callback);
 }
 
+void AlbumBrowser::setMatchMetadataCallback(AlbumCallback callback)
+{
+    matchMetadataCallback = std::move(callback);
+}
+
+void AlbumBrowser::setMetadataMatching(bool matching)
+{
+    moreButton.setButtonText(matching ? "Matching..." : "More");
+    moreButton.setEnabled(!matching);
+    backButton.setEnabled(!matching);
+}
+
 void AlbumBrowser::showAlbumDetails(const juce::String& albumId)
 {
     selectedAlbumId = albumId;
+    setMetadataMatching(false);
     refreshSelectedAlbum();
     gridViewport.setVisible(false);
     trackList.setVisible(true);
@@ -524,8 +557,9 @@ void AlbumBrowser::showMoreMenu()
     juce::PopupMenu menu;
     menu.addItem(1, "Edit details", true, false);
     menu.addItem(2, "Change cover", true, false);
+    menu.addItem(3, "Match metadata", true, false);
     menu.addSeparator();
-    menu.addItem(3, "Remove album", true, false);
+    menu.addItem(4, "Remove album", true, false);
 
     const juce::Component::SafePointer<AlbumBrowser> safeBrowser { this };
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&moreButton),
@@ -546,6 +580,10 @@ void AlbumBrowser::showMoreMenu()
                     safeBrowser->chooseArtworkCallback(albumId);
                 break;
             case 3:
+                if (safeBrowser->matchMetadataCallback)
+                    safeBrowser->matchMetadataCallback(albumId);
+                break;
+            case 4:
                 if (safeBrowser->removeAlbumCallback)
                     safeBrowser->removeAlbumCallback(albumId);
                 break;

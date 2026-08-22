@@ -31,6 +31,8 @@ public:
     void setChooseArtworkCallback(AlbumCallback callback);
     void setEditAlbumCallback(AlbumCallback callback);
     void setRemoveAlbumCallback(AlbumCallback callback);
+    void setMatchMetadataCallback(AlbumCallback callback);
+    void setMetadataMatching(bool matching);
 
 private:
     class GridComponent;
@@ -75,6 +77,7 @@ private:
     AlbumCallback chooseArtworkCallback;
     AlbumCallback editAlbumCallback;
     AlbumCallback removeAlbumCallback;
+    AlbumCallback matchMetadataCallback;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AlbumBrowser)
 };

@@ -32,6 +32,7 @@ open build/ClosureApp_artefacts/Debug/Closure.app
 - 后台 read-ahead + 音频线程内 block 级换曲，曲目边界支持 gapless 播放
 - 可在播放控制区打开或关闭 gapless 播放模式
 - 后台读取标题、艺术家、专辑、时长和 macOS 嵌入封面；缺失标签时回退到文件名
+- 专辑详情支持手动匹配 MusicBrainz，并补全发行信息和 Cover Art Archive 封面
 - 本地音频格式（mp3 / flac / wav / aiff / m4a / ogg …）
 - 播放 / 暂停 / 停止、上一首 / 下一首、进度条、音量
 - 标准 macOS 原生窗口 + 简洁毛玻璃控件界面
