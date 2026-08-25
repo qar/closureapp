@@ -106,6 +106,42 @@ bool testAlbumBrowserGridLayout()
         && expect(cardWidth >= 150, "album card remains visible in the grid");
 }
 
+bool testLyricsParsingAndSidecarReading()
+{
+    const auto parsed = TrackMetadataUtil::parseLyrics(
+        "[00:02.50]Second\n[00:01.00][00:01.50]First\n[00:03.00oops]Invalid");
+    bool passed = expect(parsed.size() == 3, "parse all LRC timestamps")
+               && expect(parsed.size() >= 3 && parsed[0].timeSeconds == 1.0,
+                         "sort LRC lines by timestamp")
+               && expect(parsed.size() >= 3 && parsed[1].timeSeconds == 1.5,
+                         "keep repeated LRC timestamps")
+               && expect(parsed.size() >= 3 && parsed[0].text == "First",
+                         "parse LRC line text")
+               && expect(TrackMetadataUtil::parseLyrics("[00:03.00oops]Invalid").empty(),
+                         "reject invalid LRC timestamps");
+
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("closure-lyrics-tests");
+    root.deleteRecursively();
+    if (!expect(root.createDirectory(), "create lyrics test directory"))
+        return false;
+
+    const auto sidecar = root.getChildFile("song.lrc");
+    passed = expect(sidecar.replaceWithText("[00:01.00]First line\n[00:02.50]Second line",
+                                           false,
+                                           false,
+                                           "\n"),
+                    "write LRC sidecar") && passed;
+
+    const auto lyrics = TrackMetadataUtil::sidecarLyricsForFile(root.getChildFile("song.wav"));
+    passed = expect(lyrics == "[00:01.00]First line\n[00:02.50]Second line",
+                    "prefer same-name LRC lyrics when no embedded lyrics exist") && passed;
+    passed = expect(TrackMetadataUtil::parseLyrics(lyrics).size() == 2,
+                    "parse sidecar lyrics timestamps") && passed;
+    root.deleteRecursively();
+    return passed;
+}
+
 bool testMusicLibrary()
 {
     const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
@@ -318,6 +354,9 @@ int main()
     }
 
     if (!testMusicLibrary())
+        return 1;
+
+    if (!testLyricsParsingAndSidecarReading())
         return 1;
 
     if (!testOnlineMetadataMatchesFilenameTitles())

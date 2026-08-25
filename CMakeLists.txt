@@ -32,6 +32,8 @@ target_sources(ClosureApp
         src/audio/TrackMetadata.h
         src/audio/TrackMetadata.cpp
         src/audio/TrackMetadataReader.mm
+        src/lyrics/LyricsClient.h
+        src/lyrics/LyricsClient.cpp
         src/metadata/MusicBrainzClient.h
         src/metadata/MusicBrainzClient.cpp
         src/library/MusicLibrary.h
@@ -107,6 +109,8 @@ if(CLOSURE_BUILD_TESTS)
             src/audio/TrackMetadata.h
             src/audio/TrackMetadata.cpp
             src/audio/TrackMetadataReader.mm
+            src/lyrics/LyricsClient.h
+            src/lyrics/LyricsClient.cpp
             src/metadata/MusicBrainzClient.h
             src/metadata/MusicBrainzClient.cpp
             src/library/MusicLibrary.h

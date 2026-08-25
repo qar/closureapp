@@ -303,7 +303,7 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
 
     updateControlLabels();
     showQueueView();
-    startTimerHz(30);
+    startTimerHz(60);
 }
 
 PlayerPanel::~PlayerPanel()
@@ -317,12 +317,16 @@ void PlayerPanel::paint(juce::Graphics& g)
 {
     g.fillAll(backgroundColour());
 
-    if (showSpectrum)
+    if (visualMode == VisualMode::spectrum)
     {
         drawSpectrum(g,
                      spectrumBounds.toFloat(),
                      currentPlaybackMetadata,
                      currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
+    }
+    else if (visualMode == VisualMode::lyrics)
+    {
+        drawLyrics(g, spectrumBounds.toFloat(), currentPlaybackMetadata);
     }
     else
     {
@@ -482,7 +486,7 @@ void PlayerPanel::resized()
 
 void PlayerPanel::mouseUp(const juce::MouseEvent& event)
 {
-    const auto toggleBounds = showSpectrum ? spectrumBounds : artworkBounds;
+    const auto toggleBounds = visualMode == VisualMode::artwork ? artworkBounds : spectrumBounds;
     if (event.mouseWasDraggedSinceMouseDown()
         || event.mods.isPopupMenu()
         || !toggleBounds.contains(event.getPosition()))
@@ -490,13 +494,15 @@ void PlayerPanel::mouseUp(const juce::MouseEvent& event)
         return;
     }
 
-    showSpectrum = !showSpectrum;
+    cycleVisualMode();
     repaint(spectrumBounds);
 }
 
 void PlayerPanel::applyState(const AudioEngine::State& state)
 {
     currentState = state;
+    lyricsPositionBaseSeconds = currentState.positionSeconds;
+    lyricsPositionTimestampMs = juce::Time::getMillisecondCounterHiRes();
     albumBrowser.setPlaybackState(currentState.activePlaylistId, currentState.filePath);
     rebuildPlaylistRows();
     updateCurrentTrackDisplay();
@@ -546,9 +552,11 @@ void PlayerPanel::applyLibraryState(const MusicLibrary::State& state)
 
 void PlayerPanel::updateCurrentTrackDisplay()
 {
-    currentPlaybackMetadata = musicLibrary.metadataForPlayback(
-        juce::File(currentState.filePath),
-        currentState.currentTrackMetadata);
+    const auto currentFile = currentState.filePath.isNotEmpty()
+                           ? juce::File(currentState.filePath)
+                           : juce::File{};
+    currentPlaybackMetadata = metadataForFile(currentFile, currentState.currentTrackMetadata);
+    scheduleLyricsFetch(currentPlaybackMetadata);
 
     if (currentState.filePath.isNotEmpty())
     {
@@ -573,7 +581,92 @@ void PlayerPanel::updateCurrentTrackDisplay()
         currentAlbumLabel.setText("", juce::dontSendNotification);
     }
 
-    repaint(artworkBounds);
+    repaint(spectrumBounds);
+}
+
+void PlayerPanel::scheduleLyricsFetch(const TrackMetadataPtr& metadata)
+{
+    if (metadata == nullptr || metadata->hasLyrics() || metadata->file == juce::File{})
+        return;
+
+    Lyrics::Query query;
+    query.title = metadata->title;
+    query.artist = metadata->artist;
+    query.album = metadata->album;
+    query.durationSeconds = metadata->durationSeconds;
+    if (!query.isValid())
+        return;
+
+    const auto path = metadata->file.getFullPathName().toStdString();
+    const auto queryKey = query.cacheKey();
+    const auto previousQuery = lyricsFetchKeys.find(path);
+    if (previousQuery != lyricsFetchKeys.end() && previousQuery->second == queryKey)
+    {
+        const auto retry = lyricsRetryAfterMs.find(path);
+        if (retry == lyricsRetryAfterMs.end()
+            || juce::Time::getCurrentTime().toMilliseconds() < retry->second)
+        {
+            return;
+        }
+    }
+    if (lyricsFetchesInFlight.find(path) != lyricsFetchesInFlight.end())
+    {
+        lyricsFetchKeys[path] = queryKey;
+        lyricsRetryAfterMs.erase(path);
+        return;
+    }
+
+    lyricsFetchKeys[path] = queryKey;
+    lyricsRetryAfterMs.erase(path);
+    lyricsFetchesInFlight.insert(path);
+    const juce::Component::SafePointer<PlayerPanel> safePanel { this };
+    lyricsClient.fetchAsync(
+        std::move(query),
+        [safePanel, path, queryKey](Lyrics::Result result)
+        {
+            if (safePanel == nullptr)
+                return;
+
+            safePanel->lyricsFetchesInFlight.erase(path);
+            const auto queryIt = safePanel->lyricsFetchKeys.find(path);
+            if (queryIt == safePanel->lyricsFetchKeys.end() || queryIt->second != queryKey)
+            {
+                safePanel->updateCurrentTrackDisplay();
+                return;
+            }
+
+            if (result.hasLyrics())
+            {
+                safePanel->fetchedLyrics[path] = std::move(result);
+                safePanel->fetchedLyricsKeys[path] = queryKey;
+            }
+            else if (result.error.isNotEmpty())
+            {
+                safePanel->lyricsRetryAfterMs[path] =
+                    juce::Time::getCurrentTime().toMilliseconds() + 30000;
+            }
+
+            safePanel->updateCurrentTrackDisplay();
+            safePanel->playlistList.repaint();
+        });
+}
+
+void PlayerPanel::cycleVisualMode()
+{
+    switch (visualMode)
+    {
+        case VisualMode::artwork:
+            visualMode = VisualMode::spectrum;
+            break;
+        case VisualMode::spectrum:
+            visualMode = VisualMode::lyrics;
+            break;
+        case VisualMode::lyrics:
+            visualMode = VisualMode::artwork;
+            break;
+    }
+
+    repaint(spectrumBounds);
 }
 
 void PlayerPanel::openFileChooser()
@@ -1022,8 +1115,9 @@ void PlayerPanel::updateSpectrum()
 
 void PlayerPanel::timerCallback()
 {
-    updateSpectrum();
-    if (showSpectrum)
+    if (visualMode == VisualMode::spectrum)
+        updateSpectrum();
+    if (visualMode != VisualMode::artwork)
         repaint(spectrumBounds);
 }
 
@@ -1036,9 +1130,40 @@ TrackMetadataPtr PlayerPanel::metadataAt(int index) const
     if (!juce::isPositiveAndBelow(index, currentState.playlistPaths.size()))
         return metadata;
 
-    return musicLibrary.metadataForPlayback(
+    return metadataForFile(
         juce::File(currentState.playlistPaths[index]),
         metadata);
+}
+
+TrackMetadataPtr PlayerPanel::metadataForFile(const juce::File& file,
+                                              const TrackMetadataPtr& fallback) const
+{
+    auto metadata = musicLibrary.metadataForPlayback(file, fallback);
+    if (metadata == nullptr || metadata->hasLyrics())
+        return metadata;
+
+    const auto key = file.getFullPathName().toStdString();
+    const auto lyricsIt = fetchedLyrics.find(key);
+    const auto lyricsKey = fetchedLyricsKeys.find(key);
+    if (lyricsIt == fetchedLyrics.end()
+        || lyricsKey == fetchedLyricsKeys.end()
+        || !lyricsIt->second.hasLyrics())
+        return metadata;
+
+    Lyrics::Query query;
+    query.title = metadata->title;
+    query.artist = metadata->artist;
+    query.album = metadata->album;
+    query.durationSeconds = metadata->durationSeconds;
+    if (!query.isValid() || lyricsKey->second != query.cacheKey())
+        return metadata;
+
+    auto result = *metadata;
+    result.lyrics = lyricsIt->second.syncedLyrics.isNotEmpty()
+                  ? lyricsIt->second.syncedLyrics
+                  : lyricsIt->second.plainLyrics;
+    result.lyricsLines = TrackMetadataUtil::parseLyrics(result.lyrics);
+    return std::make_shared<const TrackMetadata>(std::move(result));
 }
 
 juce::String PlayerPanel::titleAt(int index) const
@@ -1156,6 +1281,116 @@ void PlayerPanel::drawSpectrum(juce::Graphics& g,
         g.setColour(barColour);
         g.fillRoundedRectangle(barBounds, juce::jmin(3.0f, barWidth * 0.5f));
     }
+}
+
+void PlayerPanel::drawLyrics(juce::Graphics& g,
+                             juce::Rectangle<float> bounds,
+                             const TrackMetadataPtr& metadata) const
+{
+    if (bounds.isEmpty())
+        return;
+
+    const auto area = bounds.reduced(18.0f, 20.0f);
+    if (metadata == nullptr || !metadata->hasLyrics())
+    {
+        g.setColour(GlassLookAndFeel::inkMuted());
+        g.setFont(makeFont(14.0f));
+        g.drawFittedText("No lyrics found\nAdd embedded lyrics or a matching .lrc file",
+                         area.toNearestInt(),
+                         juce::Justification::centred,
+                         3);
+        return;
+    }
+
+    if (metadata->lyricsLines.empty())
+    {
+        g.setColour(GlassLookAndFeel::inkPrimary());
+        g.setFont(makeFont(14.0f));
+        g.drawFittedText(metadata->lyrics,
+                         area.toNearestInt(),
+                         juce::Justification::centred,
+                         juce::jmax(1, static_cast<int>(area.getHeight() / 22.0f)));
+        return;
+    }
+
+    auto positionSeconds = currentState.positionSeconds;
+    if (currentState.isPlaying
+        && currentState.filePath.isNotEmpty()
+        && lyricsPositionTimestampMs > 0.0)
+    {
+        positionSeconds = lyricsPositionBaseSeconds
+                        + (juce::Time::getMillisecondCounterHiRes()
+                           - lyricsPositionTimestampMs) / 1000.0;
+        if (currentState.lengthSeconds > 0.0)
+            positionSeconds = juce::jmin(positionSeconds, currentState.lengthSeconds);
+    }
+
+    int currentLine = -1;
+    int nextLine = -1;
+    for (size_t index = 0; index < metadata->lyricsLines.size(); ++index)
+    {
+        if (metadata->lyricsLines[index].timeSeconds > positionSeconds)
+        {
+            nextLine = static_cast<int>(index);
+            break;
+        }
+        currentLine = static_cast<int>(index);
+    }
+
+    const auto lineHeight = 28.0f;
+    const auto visibleLines = juce::jmax(1, static_cast<int>(area.getHeight() / lineHeight));
+    const auto lineCount = static_cast<int>(metadata->lyricsLines.size());
+    auto focus = currentLine >= 0 ? static_cast<float>(currentLine) : 0.0f;
+    float transition = 0.0f;
+    if (currentLine >= 0 && nextLine >= 0)
+    {
+        const auto nextTime = metadata->lyricsLines[static_cast<size_t>(nextLine)].timeSeconds;
+        const auto transitionStart = juce::jmax(
+            metadata->lyricsLines[static_cast<size_t>(currentLine)].timeSeconds,
+            nextTime - 0.4);
+        const auto transitionEnd = nextTime;
+        if (transitionEnd > transitionStart)
+        {
+            const auto normalized = static_cast<float>(juce::jlimit(
+                0.0,
+                1.0,
+                (positionSeconds - transitionStart) / (transitionEnd - transitionStart)));
+            transition = normalized * normalized * (3.0f - 2.0f * normalized);
+            focus += transition;
+        }
+    }
+
+    const auto centreIndex = static_cast<int>(std::floor(focus));
+    const auto firstLine = juce::jmax(0, centreIndex - visibleLines);
+    const auto lastLine = juce::jmin(lineCount, centreIndex + visibleLines + 1);
+    const auto normalColour = GlassLookAndFeel::inkMuted().withAlpha(0.72f);
+    const auto accentColour = GlassLookAndFeel::accent();
+
+    g.saveState();
+    g.reduceClipRegion(area.toNearestInt());
+    for (int lineIndex = firstLine; lineIndex < lastLine; ++lineIndex)
+    {
+        const auto& line = metadata->lyricsLines[static_cast<size_t>(lineIndex)];
+        auto highlight = 0.0f;
+        if (lineIndex == currentLine)
+            highlight = 1.0f - transition;
+        if (lineIndex == nextLine)
+            highlight = juce::jmax(highlight, transition);
+
+        const auto lineBounds = juce::Rectangle<float>(area.getX(),
+                                                       area.getCentreY()
+                                                           + (static_cast<float>(lineIndex) - focus) * lineHeight
+                                                           - lineHeight / 2.0f,
+                                                       area.getWidth(),
+                                                       lineHeight);
+        g.setColour(normalColour.interpolatedWith(accentColour, highlight));
+        g.setFont(makeFont(13.0f + highlight * 2.0f));
+        g.drawFittedText(line.text,
+                         lineBounds.toNearestInt(),
+                         juce::Justification::centred,
+                         1);
+    }
+    g.restoreState();
 }
 
 int PlayerPanel::getNumRows()

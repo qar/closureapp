@@ -6,6 +6,13 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <vector>
+
+struct LyricsLine
+{
+    double timeSeconds = 0.0;
+    juce::String text;
+};
 
 struct TrackMetadata
 {
@@ -18,11 +25,18 @@ struct TrackMetadata
     int discNumber = 0;
     int trackNumber = 0;
     double durationSeconds = 0.0;
+    juce::String lyrics;
+    std::vector<LyricsLine> lyricsLines;
     std::shared_ptr<const juce::Image> artwork;
 
     bool hasArtwork() const
     {
         return artwork != nullptr && artwork->isValid();
+    }
+
+    bool hasLyrics() const
+    {
+        return lyrics.isNotEmpty();
     }
 };
 
@@ -34,6 +48,10 @@ juce::String firstValue(const juce::StringPairArray& values,
                         std::initializer_list<const char*> keys);
 
 TrackMetadata fallbackForFile(const juce::File& file);
+
+juce::String sidecarLyricsForFile(const juce::File& file);
+
+std::vector<LyricsLine> parseLyrics(const juce::String& lyrics);
 }
 
 class TrackMetadataReader final

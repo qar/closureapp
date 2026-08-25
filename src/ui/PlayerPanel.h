@@ -2,11 +2,15 @@
 
 #include <JuceHeader.h>
 #include "audio/AudioEngine.h"
+#include "lyrics/LyricsClient.h"
 #include "library/MusicLibrary.h"
 #include "ui/AlbumBrowser.h"
 #include "ui/GlassLookAndFeel.h"
 
 #include <array>
+#include <map>
+#include <set>
+#include <string>
 
 class PlayerPanel final : public juce::Component,
                           private juce::ListBoxModel,
@@ -25,6 +29,13 @@ public:
     void applyLibraryState(const MusicLibrary::State& state);
 
 private:
+    enum class VisualMode
+    {
+        artwork,
+        spectrum,
+        lyrics
+    };
+
     void openFileChooser();
     void openAlbumChooser();
     void chooseAlbumArtwork(const juce::String& albumId);
@@ -42,10 +53,14 @@ private:
     void updateControlLabels();
     void updateSpectrum();
     void updateCurrentTrackDisplay();
+    void scheduleLyricsFetch(const TrackMetadataPtr& metadata);
+    void cycleVisualMode();
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
 
     TrackMetadataPtr metadataAt(int index) const;
+    TrackMetadataPtr metadataForFile(const juce::File& file,
+                                     const TrackMetadataPtr& fallback) const;
     juce::String titleAt(int index) const;
     juce::String artistAt(int index) const;
     juce::String albumAt(int index) const;
@@ -59,6 +74,9 @@ private:
                       juce::Rectangle<float> bounds,
                       const TrackMetadataPtr& metadata,
                       const juce::String& fallbackKey) const;
+    void drawLyrics(juce::Graphics& g,
+                    juce::Rectangle<float> bounds,
+                    const TrackMetadataPtr& metadata) const;
 
     int getNumRows() override;
     void paintListBoxItem(int rowNumber,
@@ -104,11 +122,19 @@ private:
     static constexpr int spectrumReadSize = 2048;
 
     bool isSeeking = false;
-    bool showSpectrum = false;
+    VisualMode visualMode = VisualMode::artwork;
     bool showingAlbums = false;
     AudioEngine::State currentState;
     MusicLibrary::State libraryState;
     TrackMetadataPtr currentPlaybackMetadata;
+    double lyricsPositionBaseSeconds = 0.0;
+    double lyricsPositionTimestampMs = 0.0;
+    LyricsClient lyricsClient;
+    std::map<std::string, Lyrics::Result> fetchedLyrics;
+    std::map<std::string, juce::String> fetchedLyricsKeys;
+    std::map<std::string, juce::String> lyricsFetchKeys;
+    std::map<std::string, int64_t> lyricsRetryAfterMs;
+    std::set<std::string> lyricsFetchesInFlight;
     std::vector<int> visibleTrackIndices;
     juce::dsp::FFT spectrumFft;
     juce::dsp::WindowingFunction<float> spectrumWindow;

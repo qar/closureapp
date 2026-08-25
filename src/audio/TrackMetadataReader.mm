@@ -25,7 +25,12 @@ void applyFallback(TrackMetadata& metadata, const juce::StringPairArray& values)
     const auto discNumber = TrackMetadataUtil::firstValue(values,
                                                           { "id3discnumber", "TPOS", "DISK" });
     const auto trackNumber = TrackMetadataUtil::firstValue(values,
-                                                           { "id3tracknumber", "TRCK", "TRACK" });
+                                                            { "id3tracknumber", "TRCK", "TRACK" });
+    const auto lyrics = TrackMetadataUtil::firstValue(values,
+                                                      { "id3unsynchronizedlyrics",
+                                                        "id3lyrics",
+                                                        "USLT",
+                                                        "LYRICS" });
 
     if (title.isNotEmpty())
         metadata.title = title;
@@ -41,6 +46,8 @@ void applyFallback(TrackMetadata& metadata, const juce::StringPairArray& values)
         metadata.discNumber = parseNumber(discNumber);
     if (trackNumber.isNotEmpty())
         metadata.trackNumber = parseNumber(trackNumber);
+    if (lyrics.isNotEmpty())
+        metadata.lyrics = lyrics;
 }
 
 void applyCommonMetadata(TrackMetadata& metadata, NSArray<AVMetadataItem*>* items)
@@ -76,7 +83,38 @@ void applyCommonMetadata(TrackMetadata& metadata, NSArray<AVMetadataItem*>* item
             if (image.isValid())
                 metadata.artwork = std::make_shared<const juce::Image>(image);
         }
+        else if (([item.identifier isEqualToString:AVMetadataIdentifieriTunesMetadataLyrics]
+                  || [item.identifier isEqualToString:AVMetadataIdentifierID3MetadataUnsynchronizedLyric]
+                  || [item.identifier isEqualToString:AVMetadataIdentifierID3MetadataSynchronizedLyric])
+                 && item.stringValue.length > 0)
+        {
+            metadata.lyrics = juce::String::fromUTF8(item.stringValue.UTF8String).trim();
+        }
     }
+}
+
+void applyEmbeddedLyrics(TrackMetadata& metadata, NSArray<AVMetadataItem*>* items)
+{
+    for (AVMetadataItem* item in items)
+    {
+        if (([item.identifier isEqualToString:AVMetadataIdentifieriTunesMetadataLyrics]
+             || [item.identifier isEqualToString:AVMetadataIdentifierID3MetadataUnsynchronizedLyric]
+             || [item.identifier isEqualToString:AVMetadataIdentifierID3MetadataSynchronizedLyric])
+            && item.stringValue.length > 0)
+        {
+            metadata.lyrics = juce::String::fromUTF8(item.stringValue.UTF8String).trim();
+            return;
+        }
+    }
+}
+
+void applySidecarLyrics(TrackMetadata& metadata)
+{
+    if (metadata.lyrics.isEmpty())
+        metadata.lyrics = TrackMetadataUtil::sidecarLyricsForFile(metadata.file);
+
+    if (metadata.lyrics.isNotEmpty())
+        metadata.lyricsLines = TrackMetadataUtil::parseLyrics(metadata.lyrics);
 }
 
 TrackMetadata readMetadata(const juce::File& file)
@@ -101,7 +139,11 @@ TrackMetadata readMetadata(const juce::File& file)
         NSURL* url = [NSURL fileURLWithPath:path];
         AVURLAsset* asset = [AVURLAsset URLAssetWithURL:url options:nil];
         applyCommonMetadata(metadata, asset.commonMetadata);
+        if (metadata.lyrics.isEmpty())
+            applyEmbeddedLyrics(metadata, asset.metadata);
     }
+
+    applySidecarLyrics(metadata);
 
     return metadata;
 }
