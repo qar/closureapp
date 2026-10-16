@@ -156,7 +156,8 @@ AudioEngine::AudioEngine()
       analysisSource(std::make_unique<AnalysisAudioSource>(transportSource))
 {
     formatManager.registerBasicFormats();
-    jassert(readAheadThread.startThread());
+    readAheadThread.startThread();
+    jassert(readAheadThread.isThreadRunning());
 
     configureProperties();
 
