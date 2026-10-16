@@ -3,6 +3,9 @@
 
 #if JUCE_MAC
 #include "ui/MacGlassWindow.h"
+#if CLOSURE_ENABLE_UPDATES
+#include "ui/MacUpdater.h"
+#endif
 #endif
 
 class ClosureApplication final : public juce::JUCEApplication
@@ -15,10 +18,17 @@ public:
     void initialise(const juce::String&) override
     {
         mainWindow = std::make_unique<MainWindow>(getApplicationName());
+#if JUCE_MAC && CLOSURE_ENABLE_UPDATES
+        juce::MenuBarModel::setMacMainMenu(nullptr);
+        MacUpdater::start();
+#endif
     }
 
     void shutdown() override
     {
+#if JUCE_MAC && CLOSURE_ENABLE_UPDATES
+        MacUpdater::stop();
+#endif
         mainWindow = nullptr;
     }
 

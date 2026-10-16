@@ -1,0 +1,76 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+      APPLE_NOTARY_PASSWORD: ${{ secrets.APPLE_NOTARY_PASSWORD }}
+      APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Import Developer ID certificate
+        if: env.APPLE_CERTIFICATE_P12 != ''
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Build universal app
+        run: |
+          cmake -S . -B build/release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCLOSURE_BUILD_TESTS=ON \
+            -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64'
+          cmake --build build/release --target ClosureApp ClosureAudioTests --parallel 4
+          ctest --test-dir build/release -R ClosureAudioTests --output-on-failure
+
+      - name: Verify release version
+        run: |
+          app_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+            build/release/ClosureApp_artefacts/Release/Closure.app/Contents/Info.plist)
+          test "$GITHUB_REF_NAME" = "v$app_version"
+
+      - name: Package app
+        run: |
+          bash scripts/package-macos.sh \
+            build/release/ClosureApp_artefacts/Release/Closure.app dist
+
+      - name: Sign Sparkle update feed
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_EDDSA_PRIVATE_KEY"
+          mkdir -p update-feed
+          cp dist/*.zip update-feed/
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" | \
+            build/release/_deps/sparkle-src/bin/generate_appcast \
+              --ed-key-file - --maximum-deltas 0 \
+              --download-url-prefix \
+              "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+              -o update-feed/appcast.xml update-feed
+          xmllint --noout update-feed/appcast.xml
+          cp update-feed/appcast.xml dist/appcast.xml
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/appcast.xml
+          fail_on_unmatched_files: true
+          generate_release_notes: true

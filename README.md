@@ -22,6 +22,43 @@ cmake --build build --target ClosureApp -j
 open build/ClosureApp_artefacts/Debug/Closure.app
 ```
 
+首次配置会下载固定版本的 Sparkle，供 macOS 自动更新使用。离线构建可加
+`-DCLOSURE_ENABLE_UPDATES=OFF`，此时应用不会检查更新。
+
+## 安装与更新
+
+从 [GitHub Releases](https://github.com/qar/closureapp/releases) 下载最新的
+`Closure-<版本>-mac.dmg`，打开后将 `Closure.app` 拖入“应用程序”。发布包同时支持
+Intel 和 Apple Silicon，最低系统版本为 macOS 11。
+
+应用启动后会自动检查 GitHub Releases 中的新版本，也可从应用菜单选择
+“Check for Updates...”。更新由 Sparkle 下载并校验签名后安装。此应用免费提供；
+免费分发并不免除 Apple 代码签名、公证或 JUCE 许可要求。
+
+当前仓库已配置 Sparkle 更新签名密钥。打 `v<版本>` 标签会触发
+`.github/workflows/release-macos.yml`，自动发布 DMG 安装包、ZIP 更新包和
+`appcast.xml`。标签版本必须与 `CMakeLists.txt` 中的 `project(... VERSION ...)` 一致。
+首次发布前应先增加版本号，再推送对应标签。
+
+CI 可选配置 Apple Developer ID 签名和公证，以免用户遇到 Gatekeeper 拦截：
+
+| GitHub Actions Secret | 内容 |
+| --- | --- |
+| `APPLE_CERTIFICATE_P12` | Developer ID Application 证书的 P12 文件，base64 编码 |
+| `APPLE_CERTIFICATE_PASSWORD` | P12 密码 |
+| `APPLE_SIGNING_IDENTITY` | Developer ID Application 证书名称或 SHA-1 |
+| `APPLE_NOTARY_APPLE_ID` | 公证使用的 Apple ID |
+| `APPLE_NOTARY_PASSWORD` | App 专用密码 |
+| `APPLE_NOTARY_TEAM_ID` | Apple Developer Team ID |
+
+没有这些可选 Secret 时仍会发布经过 Sparkle 签名的免费安装包，但 macOS
+Gatekeeper 可能要求用户在“隐私与安全性”中手动允许首次打开。更新私钥存于
+`SPARKLE_EDDSA_PRIVATE_KEY` Secret；备份留在本机钥匙串的 `com.qar.closure`
+账户中，勿将私钥提交到仓库。
+
+本地也可以运行 `bash scripts/package-macos.sh <Closure.app 路径> dist` 生成
+DMG 和 ZIP。`swift scripts/generate-icon.swift assets/ClosureIcon.png` 可重新生成图标。
+
 ## v1 功能
 
 - 清爽单页布局：当前播放封面、播放列表和底部常驻播放控制
