@@ -55,6 +55,8 @@ target_sources(ClosureApp
         src/library/MusicLibrary.cpp
         src/ui/AlbumBrowser.h
         src/ui/AlbumBrowser.cpp
+        src/ui/CoverArt.h
+        src/ui/CoverArt.cpp
         src/ui/icons/TransportIcons.h
         src/ui/icons/LUCIDE_LICENSE.txt
         src/ui/GlassLookAndFeel.h

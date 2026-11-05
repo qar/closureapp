@@ -1,5 +1,6 @@
 #include "AlbumBrowser.h"
 
+#include "ui/CoverArt.h"
 #include "ui/GlassLookAndFeel.h"
 
 #include <algorithm>
@@ -13,13 +14,6 @@ juce::Font makeFont(float size, bool bold = false)
     return bold ? font.boldened() : font;
 }
 
-juce::Colour artworkColour(const juce::String& key)
-{
-    const auto hash = static_cast<uint32_t>(key.hashCode());
-    const auto hue = static_cast<float>(hash % 1000u) / 1000.0f;
-    return juce::Colour::fromHSV(hue, 0.48f, 0.86f, 1.0f);
-}
-
 juce::String formatTime(double seconds)
 {
     if (!std::isfinite(seconds) || seconds < 0.0)
@@ -29,103 +23,103 @@ juce::String formatTime(double seconds)
     return juce::String::formatted("%d:%02d", total / 60, total % 60);
 }
 
+constexpr float coverRadius = 6.0f;
+
 void drawCover(juce::Graphics& g,
                juce::Rectangle<float> bounds,
                const std::shared_ptr<const juce::Image>& artwork,
-               const juce::String& fallbackKey)
+               const juce::String& fallbackKey,
+               const juce::String& title)
 {
-    if (bounds.isEmpty())
-        return;
-
-    juce::Path clip;
-    clip.addRoundedRectangle(bounds, 8.0f);
-    g.saveState();
-    g.reduceClipRegion(clip);
-
-    if (artwork != nullptr && artwork->isValid())
-    {
-        g.drawImageWithin(*artwork,
-                          static_cast<int>(bounds.getX()),
-                          static_cast<int>(bounds.getY()),
-                          static_cast<int>(bounds.getWidth()),
-                          static_cast<int>(bounds.getHeight()),
-                          juce::RectanglePlacement::centred | juce::RectanglePlacement::fillDestination,
-                          false);
-        g.restoreState();
-        return;
-    }
-
-    const auto colour = artworkColour(fallbackKey);
-    g.setGradientFill(juce::ColourGradient(colour.brighter(0.18f),
-                                            bounds.getX(),
-                                            bounds.getY(),
-                                            colour.darker(0.18f),
-                                            bounds.getRight(),
-                                            bounds.getBottom(),
-                                            true));
-    g.fillRect(bounds);
-
-    const auto centre = bounds.getCentre();
-    const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.19f;
-    g.setColour(juce::Colours::white.withAlpha(0.72f));
-    g.drawEllipse(centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 3.0f);
-    g.fillEllipse(centre.x - 5.0f, centre.y - 5.0f, 10.0f, 10.0f);
-    g.drawLine(centre.x + radius * 0.72f,
-               centre.y - radius * 0.72f,
-               centre.x + radius * 0.72f,
-               centre.y - radius * 1.65f,
-               3.0f);
-    g.restoreState();
+    CoverArt::draw(g, bounds, artwork.get(), fallbackKey, title, coverRadius);
 }
 
 class AlbumCard final : public juce::Component
 {
 public:
+    static constexpr int textGap = 8;
+    static constexpr int titleHeight = 18;
+    static constexpr int artistHeight = 17;
+    static constexpr int textHeight = textGap + titleHeight + artistHeight;
+
     AlbumCard(MusicLibrary::Album albumIn,
               std::function<void(const juce::String&)> onClickIn)
         : album(std::move(albumIn)), onClick(std::move(onClickIn))
     {
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        setTitle(album.title);
+    }
+
+    juce::Rectangle<float> coverBounds() const
+    {
+        return getLocalBounds().toFloat().withHeight(static_cast<float>(getWidth()));
     }
 
     void paint(juce::Graphics& g) override
     {
-        const auto bounds = getLocalBounds().toFloat();
-        g.setColour(GlassLookAndFeel::glassFill());
-        g.fillRoundedRectangle(bounds, 8.0f);
-        g.setColour(GlassLookAndFeel::glassStroke());
-        g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
+        const auto cover = coverBounds();
+        drawCover(g, cover, thumbnailFor(cover), album.id, album.title);
 
-        const auto cover = bounds.reduced(10.0f).withTrimmedBottom(bounds.getHeight() - 138.0f);
-        drawCover(g, cover, album.artwork, album.id);
+        if (isMouseOverOrDragging())
+        {
+            g.setColour(juce::Colours::black.withAlpha(isMouseButtonDown() ? 0.16f : 0.08f));
+            g.fillRoundedRectangle(cover, coverRadius);
+        }
 
-        auto text = bounds.reduced(12.0f, 10.0f);
-        text.removeFromTop(136.0f);
-        auto title = text.removeFromTop(22.0f);
-        auto artist = text.removeFromTop(19.0f);
-        auto count = text;
-
+        auto text = getLocalBounds().toFloat().withTrimmedTop(cover.getHeight() + textGap);
         g.setColour(GlassLookAndFeel::inkPrimary());
         g.setFont(makeFont(13.0f, true));
-        g.drawFittedText(album.title, title.toNearestInt(), juce::Justification::centredLeft, 1);
+        g.drawFittedText(album.title, text.removeFromTop(titleHeight).toNearestInt(),
+                         juce::Justification::centredLeft, 1);
         g.setColour(GlassLookAndFeel::inkMuted());
-        g.setFont(makeFont(11.0f));
-        g.drawFittedText(album.artist, artist.toNearestInt(), juce::Justification::centredLeft, 1);
-        g.drawText(juce::String(album.tracks.size()) + " tracks",
-                   count.toNearestInt(),
-                   juce::Justification::centredLeft,
-                   false);
+        g.setFont(makeFont(12.0f));
+        g.drawFittedText(album.artist, text.removeFromTop(artistHeight).toNearestInt(),
+                         juce::Justification::centredLeft, 1);
     }
+
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { repaint(); }
+    void mouseDown(const juce::MouseEvent&) override { repaint(); }
 
     void mouseUp(const juce::MouseEvent& event) override
     {
+        repaint();
         if (!event.mouseWasDraggedSinceMouseDown() && !event.mods.isPopupMenu() && onClick)
             onClick(album.id);
     }
 
 private:
+    /** Square-cropped, pre-scaled copy of the artwork at the on-screen pixel size.
+        Scaling a full-size cover on every paint is slow and softer than one high-quality
+        resample. */
+    std::shared_ptr<const juce::Image> thumbnailFor(juce::Rectangle<float> cover)
+    {
+        const auto& source = album.artwork;
+        if (source == nullptr || !source->isValid())
+            return nullptr;
+
+        const auto scale = juce::Component::getApproximateScaleFactorForComponent(this);
+        const auto pixels = juce::jmax(1, juce::roundToInt(cover.getWidth() * scale));
+        if (thumbnail != nullptr && thumbnailPixels == pixels)
+            return thumbnail;
+
+        const auto side = juce::jmin(source->getWidth(), source->getHeight());
+        const auto square = source->getClippedImage({ (source->getWidth() - side) / 2,
+                                                      (source->getHeight() - side) / 2,
+                                                      side,
+                                                      side });
+        thumbnail = side > pixels
+                  ? std::make_shared<const juce::Image>(
+                        square.rescaled(pixels, pixels, juce::Graphics::highResamplingQuality))
+                  : std::make_shared<const juce::Image>(square);
+        thumbnailPixels = pixels;
+        return thumbnail;
+    }
+
     MusicLibrary::Album album;
     std::function<void(const juce::String&)> onClick;
+    std::shared_ptr<const juce::Image> thumbnail;
+    int thumbnailPixels = 0;
 };
 }
 
@@ -153,34 +147,62 @@ public:
         repaint();
     }
 
-    void setAvailableWidth(int width)
+    /** Lay the grid out in a content area of `width`. Covers keep `inset` from the
+        left and top edges and `rightInset` from the right edge. */
+    void setLayout(int width, int rightInsetIn)
     {
-        setSize(juce::jmax(1, width), getHeight());
+        rightInset = juce::jmax(0, rightInsetIn);
+        if (getWidth() == juce::jmax(1, width))
+            resized();
+        else
+            setSize(juce::jmax(1, width), getHeight());
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        // Soft shadows sit in the parent so they are not clipped by each card.
+        const juce::DropShadow shadow(juce::Colours::black.withAlpha(0.16f), 14, { 0, 6 });
+        const auto clip = g.getClipBounds();
+
+        for (const auto& card : cards)
+        {
+            const auto cover = card->getBounds().withHeight(card->getWidth()).reduced(3);
+            if (cover.expanded(20).intersects(clip))
+                shadow.drawForRectangle(g, cover);
+        }
     }
 
     void resized() override
     {
         const auto width = juce::jmax(1, getWidth());
-        const auto columns = juce::jmax(1, width / 176);
-        const auto gap = 14;
-        const auto cardWidth = juce::jmax(150, (width - (columns - 1) * gap) / columns);
-        const auto cardHeight = 190;
+        const auto usable = juce::jmax(1, width - inset - rightInset);
+        const auto columns = juce::jmax(1, (usable + columnGap) / (minCellWidth + columnGap));
+        const auto cellWidth = juce::jmax(1, (usable - (columns - 1) * columnGap) / columns);
+        const auto cellHeight = cellWidth + AlbumCard::textHeight;
 
         for (size_t index = 0; index < cards.size(); ++index)
         {
             const auto column = static_cast<int>(index % static_cast<size_t>(columns));
             const auto row = static_cast<int>(index / static_cast<size_t>(columns));
-            cards[index]->setBounds(column * (cardWidth + gap),
-                                    row * (cardHeight + gap),
-                                    cardWidth,
-                                    cardHeight);
+            cards[index]->setBounds(inset + column * (cellWidth + columnGap),
+                                    inset + row * (cellHeight + rowGap),
+                                    cellWidth,
+                                    cellHeight);
         }
 
         const auto rows = (static_cast<int>(cards.size()) + columns - 1) / columns;
-        setSize(width, juce::jmax(1, rows * (cardHeight + gap) - gap));
+        const auto contentHeight = rows > 0 ? rows * cellHeight + (rows - 1) * rowGap : 0;
+        setSize(width, juce::jmax(1, contentHeight + inset * 2));
     }
 
 private:
+    static constexpr int minCellWidth = 148;
+    static constexpr int columnGap = 24;
+    static constexpr int rowGap = 26;
+    // Room around the grid so the outer shadows are not clipped by the viewport.
+    static constexpr int inset = AlbumBrowser::contentInset;
+    int rightInset = inset;
+
     std::vector<MusicLibrary::Album> albums;
     std::vector<std::unique_ptr<AlbumCard>> cards;
     std::function<void(const juce::String&)> onAlbumClick;
@@ -274,6 +296,13 @@ AlbumBrowser::AlbumBrowser()
     });
     gridViewport.setViewedComponent(gridComponent.get(), false);
     gridViewport.setScrollBarsShown(true, false);
+    // A scrollbar appearing or disappearing changes the content width; relayout so
+    // the right cover edge stays on the column edge.
+    gridViewport.onVisibleAreaChanged = [this]
+    {
+        if (gridViewport.getMaximumVisibleWidth() != laidOutGridWidth)
+            layoutGrid();
+    };
     addAndMakeVisible(gridViewport);
 
     trackModel = std::make_unique<TrackListModel>(*this);
@@ -367,7 +396,7 @@ void AlbumBrowser::paint(juce::Graphics& g)
         g.setColour(GlassLookAndFeel::inkMuted());
         g.setFont(makeFont(14.0f));
         g.drawFittedText("No albums yet\nAdd an album folder to start listening",
-                         getLocalBounds().reduced(24),
+                         getLocalBounds().reduced(contentInset + 24),
                          juce::Justification::centred,
                          2);
     }
@@ -378,11 +407,15 @@ void AlbumBrowser::resized()
     if (!selectedAlbumId.has_value())
     {
         gridViewport.setBounds(getLocalBounds());
-        gridComponent->setAvailableWidth(gridViewport.getMaximumVisibleWidth());
+        layoutGrid();
         return;
     }
 
-    auto area = getLocalBounds().reduced(4);
+    auto area = getLocalBounds()
+                    .withTrimmedLeft(contentInset)
+                    .withTrimmedRight(contentInset)
+                    .withTrimmedTop(contentInset)
+                    .reduced(4);
     if (backButton.isVisible())
     {
         auto top = area.removeFromTop(38);
@@ -422,6 +455,14 @@ void AlbumBrowser::resized()
     addToQueueButton.setBounds(actions.removeFromLeft(120));
 
     trackList.setBounds(area);
+}
+
+void AlbumBrowser::layoutGrid()
+{
+    const auto visibleWidth = gridViewport.getMaximumVisibleWidth();
+    const auto scrollbarWidth = gridViewport.getWidth() - visibleWidth;
+    laidOutGridWidth = visibleWidth;
+    gridComponent->setLayout(visibleWidth, contentInset - scrollbarWidth);
 }
 
 void AlbumBrowser::setState(const MusicLibrary::State& state)
@@ -655,5 +696,5 @@ void AlbumBrowser::drawArtwork(juce::Graphics& g,
                                juce::Rectangle<float> bounds,
                                const MusicLibrary::Album& album) const
 {
-    drawCover(g, bounds, album.artwork, album.id);
+    drawCover(g, bounds, album.artwork, album.id, album.title);
 }

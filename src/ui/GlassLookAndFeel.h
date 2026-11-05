@@ -14,6 +14,11 @@ public:
                               bool shouldDrawButtonAsHighlighted,
                               bool shouldDrawButtonAsDown) override;
 
+    void drawDrawableButton(juce::Graphics& g,
+                            juce::DrawableButton& button,
+                            bool shouldDrawButtonAsHighlighted,
+                            bool shouldDrawButtonAsDown) override;
+
     void drawButtonText(juce::Graphics& g,
                         juce::TextButton& button,
                         bool shouldDrawButtonAsHighlighted,
@@ -37,6 +42,21 @@ public:
                                       juce::Graphics& g,
                                       int width,
                                       int height) override;
+
+    int getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth) override;
+    int getTabButtonOverlap(int tabDepth) override;
+    int getTabButtonSpaceAroundImage() override;
+    juce::Font getTabButtonFont(juce::TabBarButton&, float height) override;
+
+    int getDefaultScrollbarWidth() override;
+    void drawScrollbar(juce::Graphics& g,
+                       juce::ScrollBar& scrollbar,
+                       int x, int y, int width, int height,
+                       bool isScrollbarVertical,
+                       int thumbStartPosition,
+                       int thumbSize,
+                       bool isMouseOver,
+                       bool isMouseDown) override;
 
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
     juce::Font getLabelFont(juce::Label&) override;

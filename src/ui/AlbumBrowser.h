@@ -13,6 +13,10 @@ public:
     using AlbumCallback = std::function<void(const juce::String&)>;
     using TrackCallback = std::function<void(const juce::String&, const juce::File&)>;
 
+    /** The browser extends this far beyond the column it is aligned to, so album
+        covers line up with the column edges while their shadows stay unclipped. */
+    static constexpr int contentInset = 12;
+
     AlbumBrowser();
     ~AlbumBrowser() override;
 
@@ -53,7 +57,22 @@ private:
     juce::String playbackPlaylistId;
     juce::String playbackFilePath;
 
-    juce::Viewport gridViewport;
+    class GridViewport final : public juce::Viewport
+    {
+    public:
+        std::function<void()> onVisibleAreaChanged;
+
+        void visibleAreaChanged(const juce::Rectangle<int>&) override
+        {
+            if (onVisibleAreaChanged)
+                onVisibleAreaChanged();
+        }
+    };
+
+    void layoutGrid();
+
+    GridViewport gridViewport;
+    int laidOutGridWidth = -1;
     std::unique_ptr<GridComponent> gridComponent;
 
     juce::TextButton backButton { "Albums" };

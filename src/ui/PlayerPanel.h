@@ -98,7 +98,6 @@ private:
     juce::Label emptyStateLabel;
     juce::Label elapsedTimeLabel;
     juce::Label durationTimeLabel;
-    juce::Label volumeLabel;
 
     juce::ListBox playlistList;
     juce::TextButton addButton { "Add music" };
@@ -108,12 +107,12 @@ private:
     juce::TextButton backToAlbumsButton { "Back to albums" };
     juce::DrawableButton previousButton { "Previous track", juce::DrawableButton::ImageFitted };
     juce::DrawableButton playButton { "Play", juce::DrawableButton::ImageFitted };
-    juce::DrawableButton stopButton { "Stop", juce::DrawableButton::ImageFitted };
     juce::DrawableButton nextButton { "Next track", juce::DrawableButton::ImageFitted };
     juce::DrawableButton repeatButton { "Repeat mode", juce::DrawableButton::ImageFitted };
     juce::TextButton gaplessButton { "Gapless" };
     juce::Slider positionSlider;
     juce::Slider volumeSlider;
+    std::unique_ptr<juce::Drawable> volumeIcon;
 
     // 4096 samples reaches the sub-20 Hz region while retaining the full Nyquist range.
     static constexpr int spectrumOrder = 12;

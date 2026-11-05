@@ -4,7 +4,8 @@
 MainComponent::MainComponent()
     : playerPanel(audioEngine, musicLibrary)
 {
-    setOpaque(true);
+    // On macOS a native blur view sits behind this component (see MacGlassWindow).
+    setOpaque(!JUCE_MAC);
     setSize(1120, 720);
     addAndMakeVisible(playerPanel);
 
@@ -39,7 +40,11 @@ MainComponent::~MainComponent()
 
 void MainComponent::paint(juce::Graphics& g)
 {
+#if JUCE_MAC
+    juce::ignoreUnused(g);
+#else
     g.fillAll(juce::Colour(0xfff5f7fb));
+#endif
 }
 
 void MainComponent::resized()

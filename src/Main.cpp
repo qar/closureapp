@@ -17,6 +17,10 @@ public:
 
     void initialise(const juce::String&) override
     {
+        // JUCE squashes glyphs horizontally (down to 70%) before it truncates text that
+        // does not fit. Keep glyph proportions and truncate with an ellipsis instead.
+        juce::Font::setDefaultMinimumHorizontalScaleFactor(1.0f);
+
         mainWindow = std::make_unique<MainWindow>(getApplicationName());
 #if JUCE_MAC && CLOSURE_ENABLE_UPDATES
         juce::MenuBarModel::setMacMainMenu(nullptr);

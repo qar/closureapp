@@ -1,5 +1,6 @@
 #include "PlayerPanel.h"
 #include "audio/AudioFileFormats.h"
+#include "ui/CoverArt.h"
 #include "ui/icons/TransportIcons.h"
 
 #include <algorithm>
@@ -10,7 +11,7 @@ namespace
 {
 constexpr int outerMargin = 24;
 constexpr int sectionGap = 20;
-constexpr int tabBarHeight = 38;
+constexpr int tabBarHeight = 30;
 constexpr int playbackColumnMinWidth = 320;
 constexpr int playbackColumnMaxWidth = 430;
 constexpr int playlistColumnMinWidth = 320;
@@ -21,13 +22,28 @@ constexpr int playbackProgressHeight = 24;
 constexpr int playbackTimeGap = 4;
 constexpr int playbackTimeHeight = 20;
 constexpr int playbackControlGap = 8;
-constexpr int playbackControlsHeight = 42;
+constexpr int playbackControlsHeight = 52;
 constexpr int playbackOptionsGap = 6;
-constexpr int playbackOptionsHeight = 34;
+constexpr int playbackOptionsHeight = 32;
+constexpr int queueRowInset = 8;
+// The now-playing card casts a shadow this far outside its bounds; repaints of the
+// card must cover it, or stale shadow pixels stay on screen.
+constexpr int visualShadowMargin = 40;
+
+float coverCornerRadius(float width)
+{
+    // Larger covers get proportionally rounder corners, capped like the album grid.
+    return juce::jlimit(5.0f, 10.0f, width * 0.035f);
+}
 
 juce::Colour backgroundColour()
 {
+#if JUCE_MAC
+    // Tint over the native behind-window blur. Lower alpha shows more of the desktop.
+    return juce::Colour(0xfff3f5ef).withAlpha(0.72f);
+#else
     return juce::Colour(0xfff3f5ef);
+#endif
 }
 
 juce::String formatTime(double seconds)
@@ -57,13 +73,8 @@ void configureLabel(juce::Label& label,
     label.setColour(juce::Label::textColourId, colour);
     label.setJustificationType(justification);
     label.setInterceptsMouseClicks(false, false);
-}
-
-juce::Colour artworkColour(const juce::String& key)
-{
-    const auto hash = static_cast<uint32_t>(key.hashCode());
-    const auto hue = static_cast<float>(hash % 1000u) / 1000.0f;
-    return juce::Colour::fromHSV(hue, 0.48f, 0.86f, 1.0f);
+    // No horizontal padding, so label text lines up with the cover and slider edges.
+    label.setBorderSize({ 1, 0, 1, 0 });
 }
 
 juce::String svgColour(juce::Colour colour)
@@ -87,7 +98,6 @@ void setControlIcon(juce::DrawableButton& button,
                     const char* svg,
                     juce::Colour colour = GlassLookAndFeel::accent())
 {
-    button.setEdgeIndent(9);
     const auto normal = drawableFromSvg(svg, colour);
     const auto over = drawableFromSvg(svg, colour.brighter(0.15f));
     const auto down = drawableFromSvg(svg, colour.darker(0.12f));
@@ -101,7 +111,7 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
       spectrumFft(spectrumOrder),
       spectrumWindow(spectrumSize, juce::dsp::WindowingFunction<float>::hann)
 {
-    setOpaque(true);
+    setOpaque(backgroundColour().isOpaque());
     setLookAndFeel(&lookAndFeel);
 
     configureLabel(playlistInfoLabel, "0 tracks", 12.0f, GlassLookAndFeel::inkMuted(), false,
@@ -128,10 +138,14 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     configureLabel(elapsedTimeLabel, "0:00", 12.0f, GlassLookAndFeel::inkMuted());
     configureLabel(durationTimeLabel, "0:00", 12.0f, GlassLookAndFeel::inkMuted(), false,
                    juce::Justification::centredRight);
-    configureLabel(volumeLabel, "Volume", 12.0f, GlassLookAndFeel::inkMuted(), true);
     addAndMakeVisible(elapsedTimeLabel);
     addAndMakeVisible(durationTimeLabel);
-    addAndMakeVisible(volumeLabel);
+    volumeIcon = drawableFromSvg(ClosureTransportIcons::volume, GlassLookAndFeel::inkMuted());
+    if (volumeIcon != nullptr)
+    {
+        volumeIcon->setInterceptsMouseClicks(false, false);
+        addAndMakeVisible(*volumeIcon);
+    }
 
     addButton.setComponentID("primary");
     addButton.setTooltip("Add audio files or folders");
@@ -158,10 +172,6 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     playButton.setName("Play");
     playButton.onClick = [this] { audioEngine.togglePlayPause(); };
 
-    stopButton.setComponentID("transport-stop");
-    stopButton.setTooltip("Stop");
-    stopButton.setName("Stop");
-    stopButton.onClick = [this] { audioEngine.stop(); };
 
     nextButton.setComponentID("transport-next");
     nextButton.setTooltip("Next track");
@@ -170,9 +180,12 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
 
     setControlIcon(previousButton, ClosureTransportIcons::previous);
     setControlIcon(playButton, ClosureTransportIcons::play);
-    setControlIcon(stopButton, ClosureTransportIcons::stop);
     setControlIcon(nextButton, ClosureTransportIcons::next);
     setControlIcon(repeatButton, ClosureTransportIcons::repeat);
+    previousButton.setEdgeIndent(10);
+    nextButton.setEdgeIndent(10);
+    playButton.setEdgeIndent(16);
+    repeatButton.setEdgeIndent(6);
 
     repeatButton.setComponentID("option");
     repeatButton.setTooltip("Cycle repeat mode");
@@ -196,7 +209,7 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
         audioEngine.setRepeatMode(mode);
     };
 
-    gaplessButton.setComponentID("option");
+    gaplessButton.setComponentID("chip");
     gaplessButton.setTooltip("Toggle gapless playback");
     gaplessButton.setName("Gapless playback");
     gaplessButton.onClick = [this]
@@ -229,13 +242,12 @@ PlayerPanel::PlayerPanel(AudioEngine& engine, MusicLibrary& library)
     addAndMakeVisible(backToAlbumsButton);
     addAndMakeVisible(previousButton);
     addAndMakeVisible(playButton);
-    addAndMakeVisible(stopButton);
     addAndMakeVisible(nextButton);
     addAndMakeVisible(repeatButton);
     addAndMakeVisible(gaplessButton);
 
     playlistList.setModel(this);
-    playlistList.setRowHeight(64);
+    playlistList.setRowHeight(56);
     playlistList.setColour(juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
     playlistList.setColour(juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
     playlistList.setOutlineThickness(0);
@@ -317,21 +329,27 @@ void PlayerPanel::paint(juce::Graphics& g)
 {
     g.fillAll(backgroundColour());
 
+    const auto visualArea = spectrumBounds.toFloat();
+    if (visualArea.isEmpty())
+        return;
+
     if (visualMode == VisualMode::spectrum)
     {
         drawSpectrum(g,
-                     spectrumBounds.toFloat(),
+                     visualArea.reduced(8.0f),
                      currentPlaybackMetadata,
                      currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
     else if (visualMode == VisualMode::lyrics)
     {
-        drawLyrics(g, spectrumBounds.toFloat(), currentPlaybackMetadata);
+        drawLyrics(g, visualArea, currentPlaybackMetadata);
     }
     else
     {
+        juce::DropShadow(juce::Colours::black.withAlpha(0.18f), 24, { 0, 10 })
+            .drawForRectangle(g, spectrumBounds.reduced(6));
         drawArtwork(g,
-                    artworkBounds.toFloat(),
+                    visualArea,
                     currentPlaybackMetadata,
                     currentState.filePath.isNotEmpty() ? currentState.filePath : "empty-library");
     }
@@ -341,15 +359,14 @@ void PlayerPanel::resized()
 {
     panelBounds = getLocalBounds().reduced(outerMargin, 20);
 #if JUCE_MAC
-    panelBounds.removeFromTop(38);
+    // Clear the traffic-light buttons in the transparent titlebar.
+    panelBounds.removeFromTop(18);
 #endif
 
     const auto showingAlbumDetails = showingAlbums && albumBrowser.isShowingDetails();
     viewTabs.setVisible(!showingAlbumDetails);
     backToAlbumsButton.setVisible(showingAlbumDetails);
     auto navigationBar = panelBounds.removeFromTop(tabBarHeight);
-    if (!showingAlbumDetails)
-        viewTabs.setBounds(navigationBar.withSizeKeepingCentre(180, 34));
 
     panelBounds.removeFromTop(sectionGap);
 
@@ -366,6 +383,15 @@ void PlayerPanel::resized()
     nowPlayingBounds = mainArea.removeFromLeft(leftWidth);
     mainArea.removeFromLeft(juce::jmin(sectionGap, mainArea.getWidth()));
     playlistBounds = mainArea;
+
+    // The tabs switch the right column, so centre them over that column's content.
+    if (!showingAlbumDetails)
+    {
+        const auto columnContent = playlistBounds.reduced(20, 0);
+        viewTabs.setBounds(navigationBar.withX(columnContent.getX())
+                               .withWidth(columnContent.getWidth())
+                               .withSizeKeepingCentre(200, tabBarHeight));
+    }
 
     if (showingAlbumDetails)
     {
@@ -390,9 +416,11 @@ void PlayerPanel::resized()
                                + playbackOptionsHeight;
     const auto coverSize = juce::jmax(0, juce::jmin(playbackArea.getWidth(),
                                                     playbackArea.getHeight() - playbackReserve));
+    // One column as wide as the cover, so text, sliders and controls share its edges.
+    playbackArea = playbackArea.withSizeKeepingCentre(coverSize, playbackArea.getHeight());
     const auto artworkSlot = playbackArea.removeFromTop(coverSize);
     spectrumBounds = artworkSlot;
-    const auto artworkSize = coverSize / 2;
+    const auto artworkSize = coverSize;
     artworkBounds = artworkSlot.withSizeKeepingCentre(artworkSize, artworkSize);
     playbackArea.removeFromTop(playbackArtworkGap);
     currentTitleLabel.setBounds(playbackArea.removeFromTop(28));
@@ -412,26 +440,33 @@ void PlayerPanel::resized()
 
     transport.removeFromTop(playbackControlGap);
     auto controlsArea = transport.removeFromTop(playbackControlsHeight);
-    auto controls = controlsArea.withSizeKeepingCentre(juce::jmin(242, controlsArea.getWidth()), 38);
-    previousButton.setBounds(controls.removeFromLeft(52));
-    controls.removeFromLeft(6);
-    stopButton.setBounds(controls.removeFromLeft(52));
-    controls.removeFromLeft(6);
-    playButton.setBounds(controls.removeFromLeft(68));
-    controls.removeFromLeft(6);
-    nextButton.setBounds(controls.removeFromLeft(52));
+    // Previous / play-pause / next, symmetric around the primary play button.
+    constexpr int sideButtonSize = 40;
+    constexpr int playButtonSize = 52;
+    constexpr int controlGap = 18;
+    auto controls = controlsArea.withSizeKeepingCentre(sideButtonSize * 2 + playButtonSize + controlGap * 2,
+                                                       playButtonSize);
+    previousButton.setBounds(controls.removeFromLeft(sideButtonSize)
+                                 .withSizeKeepingCentre(sideButtonSize, sideButtonSize));
+    controls.removeFromLeft(controlGap);
+    playButton.setBounds(controls.removeFromLeft(playButtonSize));
+    controls.removeFromLeft(controlGap);
+    nextButton.setBounds(controls.removeFromLeft(sideButtonSize)
+                             .withSizeKeepingCentre(sideButtonSize, sideButtonSize));
 
     transport.removeFromTop(playbackOptionsGap);
     auto options = transport.removeFromTop(playbackOptionsHeight);
-    const auto volumeWidth = juce::jlimit(90, 160, options.getWidth() / 3);
+    repeatButton.setBounds(options.removeFromLeft(32).withSizeKeepingCentre(32, 28));
+    options.removeFromLeft(6);
+    gaplessButton.setBounds(options.removeFromLeft(72).withSizeKeepingCentre(72, 28));
+
+    const auto volumeWidth = juce::jlimit(96, 150, options.getWidth() / 2);
     auto volume = options.removeFromRight(volumeWidth);
-    volumeLabel.setBounds(volume.removeFromLeft(52));
+    if (volumeIcon != nullptr)
+        volumeIcon->setTransformToFit(volume.removeFromLeft(16).withSizeKeepingCentre(16, 16).toFloat(),
+                                      juce::RectanglePlacement::centred);
     volume.removeFromLeft(8);
     volumeSlider.setBounds(volume.withSizeKeepingCentre(volume.getWidth(), 24));
-
-    repeatButton.setBounds(options.removeFromLeft(44).withSizeKeepingCentre(44, 34));
-    options.removeFromLeft(8);
-    gaplessButton.setBounds(options.removeFromLeft(98).withSizeKeepingCentre(98, 34));
 
     const auto showingQueue = !showingAlbums;
     addButton.setVisible(showingQueue);
@@ -446,41 +481,33 @@ void PlayerPanel::resized()
     }
     else
     {
-        if (showingQueue)
-        {
-            auto playlistActions = playlistArea.removeFromTop(38);
-            auto actions = playlistActions.withSizeKeepingCentre(juce::jmin(352,
-                                                                              playlistActions.getWidth()),
-                                                                 34);
-            const auto actionGap = 8;
-            const auto clearWidth = juce::jmin(76, juce::jmax(60, actions.getWidth() / 5));
-            const auto primaryWidth = juce::jmax(1,
-                                                 (actions.getWidth() - clearWidth - actionGap * 2) / 2);
-            addButton.setBounds(actions.removeFromLeft(primaryWidth));
-            actions.removeFromLeft(actionGap);
-            addAlbumButton.setBounds(actions.removeFromLeft(primaryWidth));
-            actions.removeFromLeft(actionGap);
-            clearButton.setBounds(actions.removeFromLeft(clearWidth));
-        }
-        else
-        {
-            auto footer = playlistArea.removeFromBottom(34);
-            addAlbumButton.setBounds(footer.removeFromLeft(128).withSizeKeepingCentre(128, 34));
-            playlistInfoLabel.setBounds(footer.removeFromRight(92));
-            playlistArea.removeFromBottom(12);
-        }
+        // Both views share one bottom action bar: actions on the left, count on the right.
+        constexpr int actionHeight = 30;
+        constexpr int actionWidth = 100;
+        auto footer = playlistArea.removeFromBottom(actionHeight);
+        playlistArea.removeFromBottom(12);
 
         if (showingQueue)
         {
-            playlistArea.removeFromTop(12);
-            auto playlistHeader = playlistArea.removeFromTop(32);
-            playlistInfoLabel.setBounds(playlistHeader.removeFromRight(92));
-            playlistArea.removeFromTop(10);
+            addButton.setBounds(footer.removeFromLeft(actionWidth));
+            footer.removeFromLeft(8);
         }
+
+        addAlbumButton.setBounds(footer.removeFromLeft(actionWidth));
+
+        if (showingQueue)
+        {
+            footer.removeFromLeft(4);
+            clearButton.setBounds(footer.removeFromLeft(64));
+        }
+
+        playlistInfoLabel.setBounds(footer.removeFromRight(120));
     }
 
-    playlistList.setBounds(playlistArea);
-    albumBrowser.setBounds(playlistArea);
+    // Rows draw their highlight slightly beyond the column; their content keeps the edge.
+    playlistList.setBounds(playlistArea.expanded(queueRowInset, 0));
+    albumBrowser.setBounds(playlistArea.withTrimmedTop(-AlbumBrowser::contentInset)
+                               .expanded(AlbumBrowser::contentInset, 0));
     emptyStateLabel.setBounds(playlistArea.reduced(16, 12));
 }
 
@@ -495,7 +522,7 @@ void PlayerPanel::mouseUp(const juce::MouseEvent& event)
     }
 
     cycleVisualMode();
-    repaint(spectrumBounds);
+    repaint(spectrumBounds.expanded(visualShadowMargin));
 }
 
 void PlayerPanel::applyState(const AudioEngine::State& state)
@@ -581,7 +608,7 @@ void PlayerPanel::updateCurrentTrackDisplay()
         currentAlbumLabel.setText("", juce::dontSendNotification);
     }
 
-    repaint(spectrumBounds);
+    repaint(spectrumBounds.expanded(visualShadowMargin));
 }
 
 void PlayerPanel::scheduleLyricsFetch(const TrackMetadataPtr& metadata)
@@ -666,7 +693,7 @@ void PlayerPanel::cycleVisualMode()
             break;
     }
 
-    repaint(spectrumBounds);
+    repaint(spectrumBounds.expanded(visualShadowMargin));
 }
 
 void PlayerPanel::openFileChooser()
@@ -1035,7 +1062,8 @@ void PlayerPanel::updateControlLabels()
     const auto hasQueueTracks = !currentState.playlistPaths.isEmpty();
     setControlIcon(playButton,
                    currentState.isPlaying ? ClosureTransportIcons::pause
-                                           : ClosureTransportIcons::play);
+                                           : ClosureTransportIcons::play,
+                   juce::Colours::white);
     playButton.setTooltip(currentState.isPlaying ? "Pause" : "Play");
     playButton.setName(currentState.isPlaying ? "Pause" : "Play");
     const auto repeatIsOne = currentState.repeatMode == AudioEngine::RepeatMode::single;
@@ -1049,12 +1077,14 @@ void PlayerPanel::updateControlLabels()
                                         : (repeatIsOne ? "Repeat: One" : "Repeat: All"));
     repeatButton.setName(repeatIsOff ? "Repeat: Off"
                                      : (repeatIsOne ? "Repeat: One" : "Repeat: All"));
-    gaplessButton.setButtonText(currentState.gaplessPlayback ? "Gapless: On" : "Gapless: Off");
+    repeatButton.setToggleState(!repeatIsOff, juce::dontSendNotification);
+    gaplessButton.setButtonText("Gapless");
+    gaplessButton.setTooltip(currentState.gaplessPlayback ? "Gapless playback: On"
+                                                          : "Gapless playback: Off");
     gaplessButton.setToggleState(currentState.gaplessPlayback, juce::dontSendNotification);
 
     playButton.setEnabled(hasActiveTracks);
     previousButton.setEnabled(hasActiveTracks);
-    stopButton.setEnabled(hasActiveTracks);
     nextButton.setEnabled(hasActiveTracks);
     repeatButton.setEnabled(hasActiveTracks);
     clearButton.setEnabled(hasQueueTracks);
@@ -1208,52 +1238,13 @@ void PlayerPanel::drawArtwork(juce::Graphics& g,
                               const TrackMetadataPtr& metadata,
                               const juce::String& fallbackKey) const
 {
-    if (bounds.isEmpty())
-        return;
-
-    juce::Path clip;
-    clip.addRoundedRectangle(bounds, 12.0f);
-    g.saveState();
-    g.reduceClipRegion(clip);
-
     const bool hasContent = metadata != nullptr && metadata->file != juce::File{};
-    if (hasContent && metadata->hasArtwork())
-    {
-        g.drawImageWithin(*metadata->artwork,
-                          static_cast<int>(bounds.getX()),
-                          static_cast<int>(bounds.getY()),
-                          static_cast<int>(bounds.getWidth()),
-                          static_cast<int>(bounds.getHeight()),
-                          juce::RectanglePlacement::centred | juce::RectanglePlacement::fillDestination,
-                          false);
-        g.restoreState();
-        return;
-    }
-
-    const auto colour = hasContent ? artworkColour(metadata->file.getFullPathName())
-                                   : juce::Colour(0xffdce3ee);
-    juce::ColourGradient gradient(colour.brighter(0.18f), bounds.getX(), bounds.getY(),
-                                  colour.darker(0.18f), bounds.getRight(), bounds.getBottom(), true);
-    g.setGradientFill(gradient);
-    g.fillRect(bounds);
-
-    const auto centre = bounds.getCentre();
-    const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.19f;
-    g.setColour(juce::Colours::white.withAlpha(hasContent ? 0.72f : 0.58f));
-    g.drawEllipse(centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 3.0f);
-    g.fillEllipse(centre.x - 5.0f, centre.y - 5.0f, 10.0f, 10.0f);
-    g.drawLine(centre.x + radius * 0.72f, centre.y - radius * 0.72f,
-               centre.x + radius * 0.72f, centre.y - radius * 1.65f, 3.0f);
-
-    if (!hasContent)
-    {
-        const auto marker = fallbackKey.hashCode() % 3;
-        g.setColour(GlassLookAndFeel::inkPrimary().withAlpha(0.14f));
-        g.fillEllipse(centre.x - 30.0f + marker * 12.0f, centre.y + radius + 22.0f,
-                      7.0f, 7.0f);
-    }
-
-    g.restoreState();
+    const auto* artwork = hasContent && metadata->hasArtwork() ? metadata->artwork.get() : nullptr;
+    const auto key = hasContent ? metadata->file.getFullPathName() : fallbackKey;
+    const auto title = !hasContent ? juce::String()
+                     : (metadata->title.isNotEmpty() ? metadata->title
+                                                     : metadata->file.getFileNameWithoutExtension());
+    CoverArt::draw(g, bounds, artwork, key, title, coverCornerRadius(bounds.getWidth()));
 }
 
 void PlayerPanel::drawSpectrum(juce::Graphics& g,
@@ -1264,22 +1255,21 @@ void PlayerPanel::drawSpectrum(juce::Graphics& g,
     if (bounds.isEmpty())
         return;
 
-    const auto graph = bounds.reduced(8.0f, 8.0f);
+    const auto graph = bounds;
     const auto baseline = graph.getBottom();
-    const auto gap = 3.0f;
-    const auto barWidth = juce::jmax(1.0f,
-                                     (graph.getWidth() - gap * static_cast<float>(spectrumBarCount - 1))
-                                         / static_cast<float>(spectrumBarCount));
-    const auto barColour = GlassLookAndFeel::accent();
+    // Each bar takes 60% of its slot; the rest is the gap.
+    const auto slot = graph.getWidth() / static_cast<float>(spectrumBarCount);
+    const auto barWidth = juce::jmax(1.0f, slot * 0.6f);
+    g.setColour(GlassLookAndFeel::inkPrimary().withAlpha(0.82f));
 
     for (int bar = 0; bar < spectrumBarCount; ++bar)
     {
         const auto level = spectrumLevels[static_cast<size_t>(bar)];
-        const auto height = juce::jmax(3.0f, graph.getHeight() * (0.04f + level * 0.90f));
-        const auto x = graph.getX() + static_cast<float>(bar) * (barWidth + gap);
-        auto barBounds = juce::Rectangle<float>(x, baseline - height, barWidth, height);
-        g.setColour(barColour);
-        g.fillRoundedRectangle(barBounds, juce::jmin(3.0f, barWidth * 0.5f));
+        // Silence rests as a thin baseline instead of a row of tall pills.
+        const auto height = juce::jmax(2.0f, graph.getHeight() * level * 0.92f);
+        const auto x = graph.getX() + static_cast<float>(bar) * slot + (slot - barWidth) * 0.5f;
+        const auto barBounds = juce::Rectangle<float>(x, baseline - height, barWidth, height);
+        g.fillRoundedRectangle(barBounds, juce::jmin(barWidth * 0.5f, height * 0.5f));
     }
 }
 
@@ -1408,41 +1398,48 @@ void PlayerPanel::paintListBoxItem(int rowNumber,
         return;
 
     const auto trackIndex = visibleTrackIndices[static_cast<size_t>(rowNumber)];
-    auto row = juce::Rectangle<float>(0.0f, 0.0f,
-                                      static_cast<float>(width),
-                                      static_cast<float>(height)).reduced(4.0f, 3.0f);
+    const auto rowBounds = juce::Rectangle<float>(0.0f, 0.0f,
+                                                  static_cast<float>(width),
+                                                  static_cast<float>(height));
     const bool isCurrent = currentState.queueIsActive
                         && trackIndex == currentState.currentTrackIndex;
 
     if (rowIsSelected || isCurrent)
     {
-        g.setColour(GlassLookAndFeel::accent().withAlpha(rowIsSelected ? 0.13f : 0.07f));
-        g.fillRoundedRectangle(row, 6.0f);
+        g.setColour(GlassLookAndFeel::accent().withAlpha(isCurrent ? 0.08f : 0.05f));
+        g.fillRoundedRectangle(rowBounds.reduced(2.0f, 2.0f), 8.0f);
     }
 
-    const auto cover = row.removeFromLeft(48.0f).withSizeKeepingCentre(44.0f, 44.0f);
+    auto row = rowBounds.reduced(static_cast<float>(queueRowInset), 0.0f);
+    const auto cover = row.removeFromLeft(40.0f).withSizeKeepingCentre(40.0f, 40.0f);
     drawArtwork(g, cover, metadataAt(trackIndex), currentState.playlistPaths[trackIndex]);
-    row.removeFromLeft(14.0f);
+    row.removeFromLeft(12.0f);
 
-    auto duration = row.removeFromRight(62.0f);
+    auto duration = row.removeFromRight(56.0f);
     g.setColour(GlassLookAndFeel::inkMuted());
-    g.setFont(makeFont(11.0f));
+    g.setFont(makeFont(12.0f));
     const auto durationSeconds = durationAt(trackIndex);
     if (durationSeconds > 0.0)
-        g.drawText(formatTime(durationSeconds), duration.toNearestInt(), juce::Justification::centredRight, false);
+        g.drawText(formatTime(durationSeconds), duration, juce::Justification::centredRight, false);
+    row.removeFromRight(12.0f);
 
-    auto text = row.reduced(0.0f, 7.0f);
-    auto title = text.removeFromTop(23.0f);
-    auto details = text;
-    g.setColour(isCurrent ? GlassLookAndFeel::accent().darker(0.2f)
-                          : GlassLookAndFeel::inkPrimary());
+    // Title and details form one block, centred vertically as a unit.
+    constexpr float titleHeight = 18.0f;
+    constexpr float detailsHeight = 16.0f;
+    auto text = row.withSizeKeepingCentre(row.getWidth(), titleHeight + detailsHeight);
+    g.setColour(GlassLookAndFeel::inkPrimary());
     g.setFont(makeFont(13.0f, isCurrent));
-    g.drawFittedText(titleAt(trackIndex), title.toNearestInt(), juce::Justification::centredLeft, 1);
+    g.drawFittedText(titleAt(trackIndex), text.removeFromTop(titleHeight).toNearestInt(),
+                     juce::Justification::centredLeft, 1);
 
+    juce::StringArray details;
+    details.add(artistAt(trackIndex));
+    details.add(albumAt(trackIndex));
+    details.removeEmptyStrings();
     g.setColour(GlassLookAndFeel::inkMuted());
-    g.setFont(makeFont(11.0f));
-    g.drawFittedText(artistAt(trackIndex) + "  |  " + albumAt(trackIndex),
-                     details.toNearestInt(), juce::Justification::centredLeft, 1);
+    g.setFont(makeFont(12.0f));
+    g.drawFittedText(details.joinIntoString(juce::String::fromUTF8(" \xc2\xb7 ")),
+                     text.toNearestInt(), juce::Justification::centredLeft, 1);
 }
 
 void PlayerPanel::listBoxItemClicked(int rowNumber, const juce::MouseEvent&)
