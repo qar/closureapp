@@ -41,6 +41,8 @@ target_sources(ClosureApp
         src/MainComponent.cpp
         src/audio/AudioEngine.h
         src/audio/AudioEngine.cpp
+        src/audio/DefaultOutputFollower.h
+        src/audio/DefaultOutputFollower.mm
         src/audio/AudioFileFormats.h
         src/audio/GaplessPlaylistSource.h
         src/audio/GaplessPlaylistSource.cpp
