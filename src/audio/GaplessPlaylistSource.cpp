@@ -457,6 +457,14 @@ GaplessPlaylistSource::State GaplessPlaylistSource::getState() const
 void GaplessPlaylistSource::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
 {
     const juce::ScopedLock sl(stateLock);
+
+    // A device change (e.g. headphones plugged back in) re-prepares the source chain.
+    // Keep the playback position, converted through seconds in case the rate changed.
+    const auto previousRate = outputSampleRate;
+    const auto resumeSeconds = previousRate > 0.0
+                                 ? static_cast<double>(currentPositionSamples) / previousRate
+                                 : 0.0;
+
     expectedBlockSize = samplesPerBlockExpected;
     outputSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
 
@@ -476,7 +484,17 @@ void GaplessPlaylistSource::prepareToPlay(int samplesPerBlockExpected, double sa
         currentTrackIndex = -1;
 
     if (currentTrackIndex >= 0)
+    {
         resetTrackLocked(currentTrackIndex);
+
+        auto& track = *tracks[static_cast<size_t>(currentTrackIndex)];
+        currentPositionSamples = juce::jlimit<int64>(
+            0,
+            track.outputLength,
+            static_cast<int64>(std::llround(resumeSeconds * outputSampleRate)));
+        if (currentPositionSamples > 0)
+            track.setOutputPosition(currentPositionSamples);
+    }
     updateGlobalPositionLocked();
 }
 

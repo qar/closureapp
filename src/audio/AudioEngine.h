@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "audio/DefaultOutputFollower.h"
 #include "audio/GaplessPlaylistSource.h"
 #include "audio/TrackMetadata.h"
 
@@ -95,6 +96,8 @@ private:
     class AnalysisAudioSource;
 
     juce::AudioDeviceManager deviceManager;
+    // Declared after deviceManager so it is destroyed first.
+    std::unique_ptr<DefaultOutputFollower> outputFollower;
     juce::AudioFormatManager formatManager;
     juce::TimeSliceThread readAheadThread;
     std::vector<std::unique_ptr<PlaylistContext>> playlists;

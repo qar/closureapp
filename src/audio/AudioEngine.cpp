@@ -180,6 +180,16 @@ AudioEngine::AudioEngine()
     sourcePlayer.setSource(analysisSource.get());
     deviceManager.addAudioCallback(&sourcePlayer);
     transportSource.addChangeListener(this);
+    // JUCE does not follow later default-output changes on its own, e.g. headphones
+    // plugged back in after it fell back to the speakers.
+    outputFollower = std::make_unique<DefaultOutputFollower>(deviceManager);
+    // Unplugged headphones should not move playback to the speakers. Plugging them
+    // back in does not resume, so audio never starts unexpectedly loud.
+    outputFollower->onOutputDeviceLost = [this]
+    {
+        if (transportSource.isPlaying())
+            pause();
+    };
 
     positionTimer = std::make_unique<PositionTimer>(*this);
     restorePlaylist();
@@ -187,6 +197,7 @@ AudioEngine::AudioEngine()
 
 AudioEngine::~AudioEngine()
 {
+    outputFollower.reset();
     stopPositionTimer();
     transportSource.stop();
     transportSource.setSource(nullptr);

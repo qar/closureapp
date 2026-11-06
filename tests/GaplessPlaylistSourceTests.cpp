@@ -78,6 +78,56 @@ bool writeCoverPng(const juce::File& file)
     return format.writeImageToStream(image, *output);
 }
 
+bool testDeviceRestartKeepsPosition()
+{
+    // Switching the output device (e.g. headphones plugged back in) releases and
+    // re-prepares the whole source chain. Playback must continue where it was.
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("closure-device-restart-tests");
+    root.deleteRecursively();
+    if (!expect(root.createDirectory(), "create device restart test directory"))
+        return false;
+
+    const auto track = root.getChildFile("long.wav");
+    if (!expect(writeConstantWav(track, 0.5f, 44100), "write one-second fixture"))
+        return false;
+
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+    juce::TimeSliceThread readAheadThread("Device restart test read ahead");
+    readAheadThread.startThread();
+
+    bool passed = true;
+    {
+        GaplessPlaylistSource source(formatManager, readAheadThread);
+        source.addFiles(juce::Array<juce::File> { track });
+        source.setLooping(false);
+        source.prepareToPlay(64, 44100.0);
+        source.selectTrack(0);
+
+        juce::AudioBuffer<float> output(1, 1000);
+        output.clear();
+        source.getNextAudioBlock({ &output, 0, output.getNumSamples() });
+
+        source.releaseResources();
+        source.prepareToPlay(64, 44100.0);
+        passed = expect(source.getState().currentPositionSamples == 1000,
+                        "device restart at the same rate keeps the track position")
+              && passed;
+
+        source.releaseResources();
+        source.prepareToPlay(64, 48000.0);
+        const auto seconds = static_cast<double>(source.getState().currentPositionSamples) / 48000.0;
+        passed = expect(std::abs(seconds - 1000.0 / 44100.0) < 0.001,
+                        "device restart at a new rate keeps the position in seconds")
+              && passed;
+    }
+
+    readAheadThread.stopThread(2000);
+    root.deleteRecursively();
+    return passed;
+}
+
 bool testAlbumBrowserGridLayout()
 {
     MusicLibrary::Album album;
@@ -363,6 +413,9 @@ int main()
         return 1;
 
     if (!testAlbumBrowserGridLayout())
+        return 1;
+
+    if (!testDeviceRestartKeepsPosition())
         return 1;
 
     const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
