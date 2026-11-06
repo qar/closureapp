@@ -168,6 +168,8 @@ if(CLOSURE_BUILD_TESTS)
             src/library/MusicLibrary.cpp
             src/ui/AlbumBrowser.h
             src/ui/AlbumBrowser.cpp
+            src/ui/CoverArt.h
+            src/ui/CoverArt.cpp
     )
 
     target_include_directories(ClosureAudioTests PRIVATE src)

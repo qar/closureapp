@@ -196,7 +196,7 @@ public:
     }
 
 private:
-    static constexpr int minCellWidth = 148;
+    static constexpr int minCellWidth = 150;
     static constexpr int columnGap = 24;
     static constexpr int rowGap = 26;
     // Room around the grid so the outer shadows are not clipped by the viewport.
