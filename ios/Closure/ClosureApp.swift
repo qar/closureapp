@@ -11,6 +11,9 @@ struct ClosureApp: App {
             LibraryView()
                 .environment(library)
                 .environment(player)
+                // Only the light "paper" palette is designed so far.
+                .preferredColorScheme(.light)
+                .tint(Theme.ink)
                 .task { await library.rescan() }
                 .onOpenURL { url in
                     // "Open in Closure" from the share sheet. iOS copies the file into

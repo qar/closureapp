@@ -1,133 +1,279 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum LibraryRoute: Hashable {
+    case album(String)
+    case artist(String)
+    case folder(String)
+}
+
+enum LibraryTab: String, CaseIterable, Identifiable {
+    case albums = "Albums"
+    case artists = "Artists"
+    case folders = "Folders"
+    var id: String { rawValue }
+}
+
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
+    @State private var tab: LibraryTab = .albums
+    @State private var path = NavigationPath()
     @State private var showingImporter = false
     @State private var showingNowPlaying = false
+    @State private var showingSearch = false
+    @State private var showingFinderHelp = false
 
     var body: some View {
-        NavigationStack {
+        @Bindable var library = library
+        NavigationStack(path: $path) {
             Group {
                 if library.albums.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Music", systemImage: "music.note")
-                    } description: {
-                        Text("Tap + to import files or folders, or copy music to Closure in Finder.")
-                    }
+                    EmptyLibraryView(isImporting: library.isImporting,
+                                     onImport: { showingImporter = true },
+                                     onFinderHelp: { showingFinderHelp = true })
                 } else {
-                    albumList
-                }
-            }
-            .navigationTitle("Library")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if library.isImporting {
-                        ProgressView()
-                    } else {
-                        Button("Import", systemImage: "plus") { showingImporter = true }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            header
+                            tabBar
+                            content
+                        }
+                        .padding(.bottom, 32)
                     }
                 }
             }
-            .fileImporter(isPresented: $showingImporter,
-                          allowedContentTypes: [.audio, .folder],
-                          allowsMultipleSelection: true) { result in
-                if case let .success(urls) = result {
-                    Task { await library.importItems(urls) }
+            .background(Theme.paper.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: LibraryRoute.self) { route in
+                switch route {
+                case let .album(id): AlbumView(albumID: id)
+                case let .artist(name): ArtistView(artist: name)
+                case let .folder(folder): FolderView(folder: folder)
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                if player.currentTrack != nil {
-                    NowPlayingBar { showingNowPlaying = true }
-                }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            MiniPlayer { showingNowPlaying = true }
+        }
+        .fileImporter(isPresented: $showingImporter,
+                      allowedContentTypes: [.audio, .folder],
+                      allowsMultipleSelection: true) { result in
+            if case let .success(urls) = result {
+                Task { await library.importItems(urls) }
             }
-            .sheet(isPresented: $showingNowPlaying) {
-                NowPlayingView()
-                    .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(isPresented: $showingNowPlaying) { NowPlayingView() }
+        .sheet(item: $library.importSummary) { summary in
+            ImportResultView(summary: summary)
+        }
+        .sheet(isPresented: $showingSearch) {
+            SearchView { route in
+                showingSearch = false
+                path.append(route)
             }
+        }
+        .sheet(isPresented: $showingFinderHelp) { FinderHelpView() }
 #if DEBUG
-            .task(id: library.albums.count) { runDebugLaunchArguments() }
+        .task(id: library.albums.count) { runDebugLaunchArguments() }
 #endif
+    }
+
+    // MARK: - Header and tabs
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text("Library")
+                .font(Theme.serif(46))
+                .foregroundStyle(Theme.ink)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            if library.isImporting {
+                ProgressView().tint(Theme.ink).frame(width: 44, height: 44)
+            }
+            IconButton(systemName: "magnifyingglass", label: "Search") { showingSearch = true }
+            IconButton(systemName: "plus", label: "Import") { showingImporter = true }
+        }
+        .padding(.leading, Theme.horizontalMargin)
+        .padding(.trailing, 14)
+        .padding(.top, 8)
+    }
+
+    private var tabBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 22) {
+                ForEach(LibraryTab.allCases) { item in
+                    Button { tab = item } label: {
+                        VStack(alignment: .leading, spacing: 7) {
+                            MetaText(item.rawValue, color: tab == item ? Theme.ink : Theme.muted)
+                            Rectangle()
+                                .fill(tab == item ? Theme.ink : .clear)
+                                .frame(height: 1.5)
+                        }
+                        .fixedSize()
+                        .frame(minHeight: 32, alignment: .bottom)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(tab == item ? .isSelected : [])
+                }
+            }
+            Hairline().padding(.top, 7)
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+        .padding(.top, 6)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch tab {
+        case .albums:
+            countRow(left: "\(library.albums.count) albums", right: "Sort: Artist")
+            AlbumGrid(albums: library.albums)
+        case .artists:
+            let artists = artistsList
+            countRow(left: "\(artists.count) artists", right: "A–Z")
+            listRows(artists.map { ListRow(title: $0.name, meta: "\($0.albums) album\($0.albums == 1 ? "" : "s") · \($0.tracks) tracks", route: .artist($0.name)) })
+        case .folders:
+            let folders = foldersList
+            countRow(left: "\(folders.count) folders", right: "A–Z")
+            listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) tracks\(parentPath($0.path))", route: .folder($0.path)) })
         }
     }
 
+    private func countRow(left: String, right: String) -> some View {
+        HStack {
+            MetaText(left, size: 10)
+            Spacer()
+            MetaText(right, size: 10)
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+    }
+
+    private struct ListRow: Identifiable {
+        let title: String
+        let meta: String
+        let route: LibraryRoute
+        var id: LibraryRoute { route }
+    }
+
+    private func listRows(_ rows: [ListRow]) -> some View {
+        LazyVStack(spacing: 0) {
+            Hairline()
+            ForEach(rows) { row in
+                NavigationLink(value: row.route) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(row.title)
+                                .font(.system(size: 17))
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                            MetaText(row.meta, size: 9.5, tracking: 1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Hairline()
+            }
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+    }
+
+    // MARK: - Derived lists
+
+    private var artistsList: [(name: String, albums: Int, tracks: Int)] {
+        Dictionary(grouping: library.albums, by: \.artist)
+            .map { ($0.key, $0.value.count, $0.value.reduce(0) { $0 + $1.tracks.count }) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private var foldersList: [(path: String, tracks: Int)] {
+        Dictionary(grouping: library.albums.flatMap(\.tracks), by: \.folder)
+            .map { ($0.key, $0.value.count) }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    private func displayName(_ folder: String) -> String {
+        folder.split(separator: "/").last.map(String.init) ?? "Library"
+    }
+
+    private func parentPath(_ folder: String) -> String {
+        let parts = folder.split(separator: "/").dropLast()
+        return parts.isEmpty ? "" : " · " + parts.joined(separator: "/")
+    }
+
 #if DEBUG
-    /// Simulator checks without taps: -ClosureAutoplay plays the first album,
-    /// -ClosureShowNowPlaying also opens the now playing sheet.
+    /// Simulator checks without taps. -ClosureScreen accepts: album, nowplaying,
+    /// signal, queue, import, artists, folders, search.
     private func runDebugLaunchArguments() {
         let arguments = ProcessInfo.processInfo.arguments
-        guard arguments.contains("-ClosureAutoplay"), player.currentTrack == nil,
-              let album = library.albums.first else { return }
-        player.play(album.tracks, from: 0)
-        showingNowPlaying = arguments.contains("-ClosureShowNowPlaying")
+        guard let flag = arguments.firstIndex(of: "-ClosureScreen"), flag + 1 < arguments.count,
+              player.currentTrack == nil, let album = library.albums.first else { return }
+        let screen = arguments[flag + 1]
+        var target = album
+        if let titleFlag = arguments.firstIndex(of: "-ClosureAlbum"), titleFlag + 1 < arguments.count,
+           let match = library.albums.first(where: { $0.title.hasPrefix(arguments[titleFlag + 1]) }) {
+            target = match
+        }
+        player.play(target.tracks, from: min(1, target.tracks.count - 1), context: target.title)
+        switch screen {
+        case "album": path.append(LibraryRoute.album(target.id))
+        case "nowplaying", "signal", "queue": showingNowPlaying = true
+        case "artists": tab = .artists
+        case "folders": tab = .folders
+        case "search": showingSearch = true
+        case "import":
+            var report = FileImporter.Report()
+            report.audioFiles = 12
+            report.companionFiles = 5
+            report.leftInPlace = ["Night Album/extras.zip"]
+            library.importSummary = ImportSummary(source: "Finder", report: report)
+        default: break
+        }
     }
 #endif
-
-    private var albumList: some View {
-        List {
-            if let message = library.lastImportMessage {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            ForEach(library.albums) { album in
-                Section {
-                    ForEach(Array(album.tracks.enumerated()), id: \.element.id) { index, track in
-                        TrackRow(track: track, isCurrent: player.currentTrack?.id == track.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture { player.play(album.tracks, from: index) }
-                            .swipeActions {
-                                Button("Delete", systemImage: "trash", role: .destructive) {
-                                    Task { await library.delete(track) }
-                                }
-                            }
-                    }
-                } header: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(album.title).font(.headline).foregroundStyle(.primary)
-                        Text(album.artist).font(.subheadline)
-                    }
-                    .textCase(nil)
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-    }
 }
 
-private struct TrackRow: View {
-    let track: Track
-    let isCurrent: Bool
+/// Two-column album grid.
+struct AlbumGrid: View {
+    let albums: [Album]
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(track.trackNumber > 0 ? "\(track.trackNumber)" : "–")
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 24, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .fontWeight(isCurrent ? .semibold : .regular)
-                    .lineLimit(1)
-                Text(track.formatSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 21, alignment: .top),
+                            GridItem(.flexible(), alignment: .top)],
+                  spacing: 30) {
+            ForEach(albums) { album in
+                NavigationLink(value: LibraryRoute.album(album.id)) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ArtworkView(request: album.artworkRequest, title: album.title, pixelSize: 520)
+                            .shadow(color: .black.opacity(0.08), radius: 7, y: 6)
+                        Text(album.title)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                            .padding(.top, 10)
+                        Text(album.artist)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .padding(.top, 2)
+                        MetaText(album.format, size: 9.5, tracking: 1)
+                            .padding(.top, 7)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
             }
-
-            Spacer(minLength: 8)
-
-            Text(formatTime(track.duration))
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, Theme.horizontalMargin)
     }
-}
-
-func formatTime(_ seconds: Double) -> String {
-    guard seconds.isFinite, seconds > 0 else { return "0:00" }
-    let total = Int(seconds.rounded(.down))
-    return String(format: "%d:%02d", total / 60, total % 60)
 }

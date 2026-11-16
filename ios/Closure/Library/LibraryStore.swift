@@ -16,14 +16,33 @@ struct Track: Identifiable, Hashable, Codable {
     var bitDepth: Int
     var fileSize: Int64
     var modified: Date
+    var year: Int?
 
     var url: URL { LibraryStore.libraryFolder.appendingPathComponent(id) }
+
+    /// Folder of the file, relative to the library root.
+    var folder: String { id.split(separator: "/").dropLast().joined(separator: "/") }
+
+    /// Tracks with the same album title in the same folder form one album.
+    var albumKey: String { "\(album)\u{1F}\(folder)" }
 
     var formatSummary: String {
         var parts = [codec]
         if bitDepth > 0 { parts.append("\(bitDepth)-bit") }
         if sampleRate > 0 { parts.append(String(format: "%g kHz", sampleRate / 1000)) }
         return parts.joined(separator: " · ")
+    }
+
+    /// "FLAC 24/96", "ALAC 16/44.1", "AAC 44.1".
+    var shortFormat: String {
+        let rate = sampleRate > 0 ? String(format: "%g", sampleRate / 1000) : ""
+        if bitDepth > 0 && !rate.isEmpty { return "\(codec) \(bitDepth)/\(rate)" }
+        return rate.isEmpty ? codec : "\(codec) \(rate)"
+    }
+
+    var artworkRequest: ArtworkStore.Request {
+        ArtworkStore.Request(key: albumKey, directory: url.deletingLastPathComponent(),
+                             sampleTracks: [url], stamp: modified.timeIntervalSince1970)
     }
 }
 
@@ -32,6 +51,29 @@ struct Album: Identifiable, Hashable {
     let title: String
     let artist: String
     let tracks: [Track]
+
+    var folder: String { tracks.first?.folder ?? "" }
+    var year: Int? { tracks.compactMap(\.year).min() }
+    var duration: Double { tracks.reduce(0) { $0 + $1.duration } }
+
+    /// The shared format, or "MIXED" when tracks differ.
+    var format: String {
+        let formats = Set(tracks.map(\.shortFormat))
+        return formats.count == 1 ? formats.first! : "Mixed"
+    }
+
+    var artworkRequest: ArtworkStore.Request {
+        ArtworkStore.Request(key: id, directory: tracks.first?.url.deletingLastPathComponent() ?? LibraryStore.libraryFolder,
+                             sampleTracks: tracks.prefix(2).map(\.url),
+                             stamp: tracks.first?.modified.timeIntervalSince1970 ?? 0)
+    }
+}
+
+/// Shown once after an import that changed something.
+struct ImportSummary: Identifiable {
+    let id = UUID()
+    let source: String
+    let report: FileImporter.Report
 }
 
 /// Prototype library. The app keeps its own copy of every file, in the folder
@@ -45,7 +87,8 @@ struct Album: Identifiable, Hashable {
 final class LibraryStore {
     private(set) var albums: [Album] = []
     private(set) var isImporting = false
-    private(set) var lastImportMessage: String?
+    /// The result of the last import, until the user dismisses it.
+    var importSummary: ImportSummary?
 
     nonisolated static let libraryFolder: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -83,7 +126,7 @@ final class LibraryStore {
             report.merge(importer.importItem(url, mode: .copy))
         }
         await rescan()
-        lastImportMessage = Self.describe(report, source: nil)
+        importSummary = ImportSummary(source: "Files", report: report)
     }
 
     /// Moves files from Documents (Finder file sharing, share sheet inbox) into the library.
@@ -99,35 +142,12 @@ final class LibraryStore {
         // something else happened, so they do not produce a message on every launch.
         guard report.audioFiles > 0 || report.companionFiles > 0 || !report.failed.isEmpty else { return }
         await rescan()
-        lastImportMessage = Self.describe(report, source: "Documents")
+        importSummary = ImportSummary(source: "Finder", report: report)
     }
 
     func delete(_ track: Track) async {
         try? FileManager.default.removeItem(at: track.url)
         await rescan()
-    }
-
-    private static func describe(_ report: FileImporter.Report, source: String?) -> String {
-        var parts: [String] = []
-        if report.audioFiles == 0 && report.failed.isEmpty {
-            parts.append("No audio files found")
-        } else {
-            var imported = "Imported \(report.audioFiles) track\(report.audioFiles == 1 ? "" : "s")"
-            if report.companionFiles > 0 {
-                imported += " and \(report.companionFiles) cover, lyrics or other file\(report.companionFiles == 1 ? "" : "s")"
-            }
-            if let source { imported += " from \(source)" }
-            parts.append(imported)
-        }
-        if !report.failed.isEmpty {
-            parts.append("\(report.failed.count) could not be imported and were left in place: "
-                         + report.failed.prefix(3).joined(separator: ", ")
-                         + (report.failed.count > 3 ? ", …" : ""))
-        }
-        if !report.leftInPlace.isEmpty, let source {
-            parts.append("\(report.leftInPlace.count) item\(report.leftInPlace.count == 1 ? "" : "s") left in \(source)")
-        }
-        return parts.joined(separator: ". ")
     }
 
     private static func isAudio(_ url: URL) -> Bool {
@@ -163,6 +183,7 @@ final class LibraryStore {
         tracksByID = updated
         saveIndex()
         rebuildAlbums()
+        await ArtworkStore.shared.forgetMisses()
     }
 
     private static func readTrack(id: String, url: URL, size: Int64, modified: Date) async -> Track {
@@ -171,6 +192,7 @@ final class LibraryStore {
         var artist = ""
         var album = url.deletingLastPathComponent().lastPathComponent
         var trackNumber = 0
+        var year: Int?
 
         let asset = AVURLAsset(url: url)
         if let items = try? await asset.load(.metadata) {
@@ -182,6 +204,8 @@ final class LibraryStore {
                     if let value = try? await item.load(.stringValue), !value.isEmpty { artist = value }
                 case .commonKeyAlbumName?:
                     if let value = try? await item.load(.stringValue), !value.isEmpty { album = value }
+                case .commonKeyCreationDate?:
+                    if year == nil, let value = try? await item.load(.stringValue) { year = Self.year(from: value) }
                 default:
                     break
                 }
@@ -189,6 +213,11 @@ final class LibraryStore {
                 if let identifier = item.identifier,
                    identifier == .iTunesMetadataTrackNumber || identifier == .id3MetadataTrackNumber {
                     trackNumber = await Self.trackNumber(from: item)
+                }
+                if year == nil, let identifier = item.identifier,
+                   [.iTunesMetadataReleaseDate, .id3MetadataYear, .id3MetadataRecordingTime].contains(identifier),
+                   let value = try? await item.load(.stringValue) {
+                    year = Self.year(from: value)
                 }
             }
         }
@@ -200,7 +229,15 @@ final class LibraryStore {
 
         return Track(id: id, title: title, artist: artist, album: album, trackNumber: trackNumber,
                      duration: info.durationSeconds, codec: info.ok ? info.codec : "Unsupported",
-                     sampleRate: info.sampleRate, bitDepth: info.bitDepth, fileSize: size, modified: modified)
+                     sampleRate: info.sampleRate, bitDepth: info.bitDepth, fileSize: size, modified: modified,
+                     year: year)
+    }
+
+    /// First four-digit year in "2024", "2024-05-01" or "2024-05-01T00:00:00Z".
+    private static func year(from string: String) -> Int? {
+        guard let range = string.range(of: #"\d{4}"#, options: .regularExpression),
+              let value = Int(string[range]), (1000...2999).contains(value) else { return nil }
+        return value
     }
 
     private static func trackNumber(from item: AVMetadataItem) async -> Int {
@@ -216,9 +253,7 @@ final class LibraryStore {
     }
 
     private func rebuildAlbums() {
-        let grouped = Dictionary(grouping: tracksByID.values) { track in
-            "\(track.album)\u{1F}\(track.id.split(separator: "/").dropLast().joined(separator: "/"))"
-        }
+        let grouped = Dictionary(grouping: tracksByID.values, by: \.albumKey)
         albums = grouped.map { key, tracks in
             let sorted = tracks.sorted { first, second in
                 if first.trackNumber != second.trackNumber { return first.trackNumber < second.trackNumber }
@@ -230,7 +265,11 @@ final class LibraryStore {
                          artist: artists.count == 1 ? artists.first! : (artists.isEmpty ? "Unknown Artist" : "Various Artists"),
                          tracks: sorted)
         }
-        .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        .sorted { first, second in
+            let byArtist = first.artist.localizedStandardCompare(second.artist)
+            if byArtist != .orderedSame { return byArtist == .orderedAscending }
+            return first.title.localizedStandardCompare(second.title) == .orderedAscending
+        }
     }
 
     // MARK: - Storage

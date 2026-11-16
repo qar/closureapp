@@ -12,6 +12,8 @@ final class PlayerModel {
     private(set) var isPlaying = false
     private(set) var lastError: String?
     private(set) var repeatMode: CLSRepeatMode = .all
+    /// Where the queue came from, e.g. an album title. Shown as "Playing from".
+    private(set) var contextTitle = ""
 
     var currentTrack: Track? {
         queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
@@ -20,6 +22,8 @@ final class PlayerModel {
     @ObservationIgnored private let engine = CLSEngine()
     @ObservationIgnored private let session = AudioSessionController()
     @ObservationIgnored private var resumeAfterInterruption = false
+    @ObservationIgnored private var artworkTask: Task<Void, Never>?
+    @ObservationIgnored private var nowPlayingArtwork: (key: String, artwork: MPMediaItemArtwork)?
 
     init() {
         engine.setRepeatMode(repeatMode)
@@ -41,11 +45,17 @@ final class PlayerModel {
 
     /// Plays `tracks` (normally one album) from `index`. The hardware rate is chosen
     /// once per queue, from the starting track, so album playback stays gapless.
-    func play(_ tracks: [Track], from index: Int) {
+    /// With `shuffled`, the queue order is shuffled and playback starts at its first track.
+    func play(_ tracks: [Track], from index: Int, context: String = "", shuffled: Bool = false) {
         guard tracks.indices.contains(index) else { return }
-        queue = tracks
-        currentIndex = index
+        let ordered = shuffled ? tracks.shuffled() : tracks
+        let start = shuffled ? 0 : index
+        queue = ordered
+        currentIndex = start
+        contextTitle = context
         lastError = nil
+        let tracks = ordered
+        let index = start
 
         let source = CLSEngine.probe(tracks[index].url.path)
         do {
@@ -89,6 +99,15 @@ final class PlayerModel {
         refreshIndex()
     }
 
+    /// Jumps to a track in the current queue.
+    func playQueueIndex(_ index: Int) {
+        guard queue.indices.contains(index) else { return }
+        engine.play(index)
+        currentIndex = index
+        isPlaying = true
+        updateNowPlaying()
+    }
+
     func previous() {
         engine.previous()
         refreshIndex()
@@ -99,14 +118,9 @@ final class PlayerModel {
         updateNowPlaying()
     }
 
-    func cycleRepeatMode() {
-        switch repeatMode {
-        case .off: repeatMode = .all
-        case .all: repeatMode = .one
-        case .one: repeatMode = .off
-        @unknown default: repeatMode = .off
-        }
-        engine.setRepeatMode(repeatMode)
+    func setRepeatMode(_ mode: CLSRepeatMode) {
+        repeatMode = mode
+        engine.setRepeatMode(mode)
     }
 
     // MARK: - Engine and session events
@@ -219,6 +233,25 @@ final class PlayerModel {
         ]
         if !track.artist.isEmpty { info[MPMediaItemPropertyArtist] = track.artist }
         if !track.album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = track.album }
+        if let cached = nowPlayingArtwork, cached.key == track.albumKey {
+            info[MPMediaItemPropertyArtwork] = cached.artwork
+        } else {
+            loadArtwork(for: track)
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func loadArtwork(for track: Track) {
+        artworkTask?.cancel()
+        let request = track.artworkRequest
+        artworkTask = Task { [weak self] in
+            guard let image = await ArtworkStore.shared.image(for: request, pixelSize: 600),
+                  !Task.isCancelled, let self, self.currentTrack?.albumKey == track.albumKey else { return }
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            self.nowPlayingArtwork = (track.albumKey, artwork)
+            var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+            info[MPMediaItemPropertyArtwork] = artwork
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
     }
 }

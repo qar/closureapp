@@ -51,6 +51,8 @@ targets:
       - path: ClosureTests
       # Plain Foundation code, compiled straight into the tests without a host app.
       - path: Closure/Library/FileImporter.swift
+      - path: Closure/Library/AlbumTitleParts.swift
+      - path: Closure/Library/ArtworkStore.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qar.closure.tests
