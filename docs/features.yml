@@ -1,0 +1,640 @@
+# Closure 产品需求定义
+#
+# 本文件收集并维护 Closure 的产品需求。当前以 iOS 为重点平台，其他平台的状态一并记录。
+# 新增或修改需求时，只改这个文件。代码实现完成并通过验收后，再把对应平台的状态改为 done。
+#
+# 字段说明
+#   id          稳定标识，格式为 <分类>.<短名>。不要重用已删除的 id。
+#   title       一句话描述需求。
+#   category    分类，取值见 categories。
+#   priority    优先级，取值见 priorities。以当前重点平台 iOS 为准。
+#   platforms   每个平台一个状态，取值见 statuses。没有列出的平台表示尚未评估。
+#   why         需求依据。引用 sources 里的调研时写调研 id。
+#   acceptance  验收标准。每一条都要能检查或测量。
+#   notes       可选。补充约束、风险或各平台的差异。
+
+version: 1
+
+platforms:
+  ios: iPhone 版
+  ipados: iPad 版
+  macos: Mac 版
+  watchos: Apple Watch 版
+
+statuses:
+  done: 已实现，并满足验收标准
+  partial: 已有部分实现或原型，尚未满足全部验收标准
+  planned: 计划做，尚未开始
+  deferred: 暂缓。有需求，但当前不做
+  not-planned: 明确不做
+  n/a: 该平台不适用
+
+priorities:
+  P0: 首次上架前必须完成
+  P1: 上架后第一批完成
+  P2: 后续版本
+  P3: 候选，需要更多依据再决定
+
+categories:
+  playback: 播放
+  library: 曲库
+  lyrics: 歌词
+  integration: 系统集成
+  sync: 同步与备份
+  format: 格式支持
+  quality: 质量证明
+  commerce: 商业
+  ux: 体验与无障碍
+  platform: 平台
+
+sources:
+  reviews-2026-11: >-
+    2026-11 竞品 App Store 差评调研。20 个竞品、6 个区共 936 条评论，其中 1~3 星 218 条，
+    人工分类。主题排行：曲库管理 56 条（18 个 App），播放中断 39 条（16 个），收费 37 条（9 个），
+    界面难用 31 条，闪退卡顿 31 条，导入与文件丢失 25 条，网盘与 NAS 22 条，系统集成 19 条，
+    停更 14 条，非拉丁文字 10 条，音质 8 条，切歌间隙 6 条，歌词 4 条。
+    样本来自网页公开评论（按"最有帮助"排序），只反映相对重要性。
+  forums-2026-11: >-
+    2026-11 社区讨论调研（V2EX、知乎、英文对比文章）。高频需求：锁屏歌词、自动刮削、
+    WiFi 传歌与网盘接入、界面简洁、标签兼容、CarPlay、无缝播放与 ReplayGain、买断制。
+  vision: docs/VISION.md 与 docs/AUDIO_QUALITY_ROADMAP.md 中的产品原则。
+
+# 由调研得出的产品原则。具体需求不得违反这些原则。
+principles:
+  - 不改动信号。默认数字增益为 1，不加隐藏的音效或响度处理。改动信号的功能必须由用户开启。
+  - 绝不丢失用户的文件。任何删除都要用户确认。
+  - 一次性买断。本地播放与曲库功能全部包含在内，不加广告，不用倒计时等手段诱导购买。
+  - 曲库在本地由 App 管理。云端只做备份，不做流媒体播放。
+  - 质量承诺必须可测量，并附测试方法。
+
+features:
+  # ---------------------------------------------------------------- 播放
+
+  - id: playback.gapless
+    title: 采样级无缝播放
+    category: playback
+    priority: P0
+    platforms: { ios: done, macos: done }
+    why: [reviews-2026-11（切歌间隙 6 条，5 个 App）, forums-2026-11]
+    acceptance:
+      - 自动测试：曲目边界误差为 0 个采样，重复 50 次全部通过。
+      - 真机播放整张现场专辑，曲间无可闻的间隙或爆音。
+
+  - id: playback.unity-gain
+    title: 数字增益固定为 1，音量交给系统
+    category: playback
+    priority: P0
+    platforms: { ios: done, macos: planned }
+    why: [vision, reviews-2026-11（有用户听出强制调音导致的失真）]
+    acceptance:
+      - null test：在源采样率等于输出采样率时，输出与解码结果逐个采样相同。
+    notes: macOS 版当前默认软件增益为 0.85，见 AUDIO_QUALITY_ROADMAP.md 第 3 项。
+
+  - id: playback.sample-rate-match
+    title: 按专辑把硬件采样率切到源采样率
+    category: playback
+    priority: P0
+    platforms: { ios: done, macos: planned }
+    why: [vision]
+    acceptance:
+      - 设备支持源采样率时，信号路径显示"无重采样"。
+      - 同一队列内不切换采样率，保证无缝播放。
+    notes: iOS 内置扬声器可能固定在 48 kHz，此时由 playback.hq-resampling 处理。
+
+  - id: playback.hq-resampling
+    title: 无法匹配采样率时，使用最高质量重采样
+    category: playback
+    priority: P1
+    platforms: { ios: done, macos: planned }
+    why: [vision]
+    acceptance:
+      - 测量报告给出通带波动、阻带衰减和 THD+N，并与 macOS 现有实现对比。
+
+  - id: playback.background-reliability
+    title: 锁屏和后台长时间稳定播放
+    category: playback
+    priority: P0
+    platforms: { ios: partial }
+    why: [reviews-2026-11（播放中断 39 条，16 个 App；"要一直亮屏才能播"）]
+    acceptance:
+      - 真机锁屏连续播放 4 小时，零中断、零欠载，重复 3 次。
+      - 播放中切到其他 App、接收通知、低电量模式下不停播。
+    notes: 原型已实现，尚未做长时间真机测试。
+
+  - id: playback.interruptions
+    title: 正确处理来电等打断和输出设备变化
+    category: playback
+    priority: P0
+    platforms: { ios: partial, macos: done }
+    why: [reviews-2026-11（来电或拍照后不能自动恢复）]
+    acceptance:
+      - 来电结束后，按系统提示自动恢复播放。
+      - 拔出耳机或断开蓝牙时暂停，不转到扬声器播放。
+      - 硬件采样率变化后，从原位置继续播放。
+    notes: iOS 已实现，尚未在真机上逐项验证。macOS 已有 DefaultOutputFollower。
+
+  - id: playback.now-playing
+    title: 锁屏、控制中心、耳机按键控制，并显示封面
+    category: playback
+    priority: P0
+    platforms: { ios: partial, macos: planned }
+    why: [reviews-2026-11（锁屏点击会打开系统音乐 App）]
+    acceptance:
+      - 锁屏和控制中心显示标题、艺人、专辑、封面和进度。
+      - 播放、暂停、上一首、下一首、拖动进度都有效。
+    notes: iOS 原型缺少封面。
+
+  - id: playback.declick
+    title: 开始、暂停、跳转时不爆音
+    category: playback
+    priority: P1
+    platforms: { ios: done, macos: planned }
+    acceptance:
+      - 测量暂停和跳转处的跳变能量，低于设定阈值。
+
+  - id: playback.shuffle
+    title: 随机播放
+    category: playback
+    priority: P0
+    platforms: { ios: planned, macos: planned }
+    why: [reviews-2026-11（多个 App 因没有随机播放或随机不均匀被差评）]
+    acceptance:
+      - 随机顺序在一轮内不重复。
+      - 随机播放下仍保持无缝衔接。
+
+  - id: playback.queue
+    title: 播放队列：下一首播放、稍后播放、查看和调整队列
+    category: playback
+    priority: P1
+    platforms: { ios: planned, macos: partial }
+    why: [reviews-2026-11]
+    acceptance:
+      - 可以把单曲或整张专辑加入队列，并调整顺序。
+
+  - id: playback.resume-state
+    title: 重启后恢复队列和播放位置
+    category: playback
+    priority: P1
+    platforms: { ios: planned, macos: partial }
+    why: [reviews-2026-11（暂停一段时间后从头播放）]
+    acceptance:
+      - App 被系统结束后重新打开，队列、曲目和位置都与之前相同。
+    notes: macOS 当前恢复播放列表，不恢复播放位置。
+
+  - id: playback.signal-path
+    title: 显示完整信号路径
+    category: playback
+    priority: P1
+    platforms: { ios: done, macos: planned }
+    why: [vision]
+    acceptance:
+      - 显示文件格式、硬件采样率、引擎输出采样率、是否重采样、增益、输出设备、欠载次数。
+
+  - id: playback.replaygain
+    title: ReplayGain（曲目和专辑模式）
+    category: playback
+    priority: P2
+    platforms: { ios: planned, macos: planned }
+    why: [forums-2026-11, vision]
+    acceptance:
+      - 默认关闭。开启后按标签调整增益，防止削波。
+    notes: 会改动信号，必须由用户开启。见 AUDIO_QUALITY_ROADMAP.md 第 4 项。
+
+  - id: playback.eq
+    title: 可选均衡器
+    category: playback
+    priority: P3
+    platforms: { ios: deferred, macos: deferred }
+    why: [reviews-2026-11（EQ 被锁进订阅是差评重点）]
+    notes: 如果做，必须默认关闭，并包含在买断价格内。
+
+  # ---------------------------------------------------------------- 曲库
+
+  - id: library.import
+    title: 从"文件"App 导入文件和文件夹
+    category: library
+    priority: P0
+    platforms: { ios: done, macos: done }
+    acceptance:
+      - 导入 iCloud Drive、U 盘、SMB 上的文件和文件夹，保留文件夹结构。
+      - 来源文件从不被修改或删除。
+    notes: iOS 把文件拷进 App 私有目录。macOS 按文件夹引用原位置，不拷贝。
+
+  # 文件管理采用 B 方案（2026-11-16 确认）：磁盘上的文件保持导入时的样子，
+  # 不按标签重排、不重命名；所有整理（专辑、艺人、标签修正、歌单）都记在曲库数据库里。
+
+  - id: library.keep-file-layout
+    title: 文件保持导入时的结构，整理全部在软件层面完成
+    category: library
+    priority: P0
+    platforms: { ios: partial, macos: done }
+    acceptance:
+      - 导入后，文件夹名、文件名、目录结构与来源相同。
+      - 编辑标签、合并或拆分专辑、歌单和收藏只改数据库，不改文件。
+      - 文件只在用户明确操作时才变化（删除、在文件夹视图中移动或重命名）。
+    notes: iOS 已保持结构。标签编辑尚未实现，见 library.metadata-edit。
+
+  - id: library.companion-files
+    title: 封面、歌词、CUE 等附属文件随音频一起导入
+    category: library
+    priority: P0
+    platforms: { ios: done }
+    acceptance:
+      - 图片、.lrc、.cue、.log、.m3u、PDF、.txt、.nfo 保持在原相对位置。
+      - .DS_Store 等系统垃圾文件不导入。不认识的文件留在原处并告诉用户。
+    notes: 由 FileImporter 实现，有单元测试。
+
+  - id: library.import-safety
+    title: 导入失败或中断时不丢文件、不留残缺专辑
+    category: library
+    priority: P0
+    platforms: { ios: partial }
+    acceptance:
+      - 收件箱只移除已成功进入曲库的文件，只删除已清空的文件夹（单元测试覆盖）。
+      - 导入前检查剩余空间，不够时不开始导入。
+      - 先拷进暂存区并校验大小和哈希，整张专辑一次性移入曲库。中断后可以继续。
+      - 来自 iCloud Drive 的未下载文件先下载再导入。
+      - 导入结束后报告导入了什么、跳过了什么、为什么。
+    notes: 第一条已完成（2026-11-16 修复收件箱删除非音频文件的问题）。其余尚未实现。
+
+  - id: library.dedupe
+    title: 导入时识别重复文件
+    category: library
+    priority: P1
+    platforms: { ios: planned }
+    acceptance:
+      - 内容完全相同的文件跳过并告诉用户。路径相同但内容不同时，两份都保留，由用户选择。
+    notes: 目前同名文件会以"名称 2"另存一份，不会覆盖已有文件。
+
+  - id: library.target-folder
+    title: 导入时选择放进曲库中的哪个文件夹
+    category: library
+    priority: P1
+    platforms: { ios: planned }
+    acceptance:
+      - 可以选择已有文件夹或新建文件夹。默认放在曲库根目录，保持来源文件夹的名字。
+
+  - id: library.folder-view
+    title: 按原始文件夹结构浏览
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: partial }
+    why: [reviews-2026-11（不能按文件夹浏览，古典乐用户尤其需要）]
+
+  - id: library.trash
+    title: 最近删除
+    category: library
+    priority: P0
+    platforms: { ios: planned }
+    why: [principles（绝不丢失用户的文件）]
+    acceptance:
+      - 删除的文件先进"最近删除"，到期后才真正清除，期间可以恢复。
+      - 批量删除前要确认。
+    notes: 保留期暂定 30 天，待确认。原型目前左滑直接删除，没有确认。
+
+  - id: library.storage-view
+    title: 存储页：总占用、每张专辑的大小、剩余空间
+    category: library
+    priority: P1
+    platforms: { ios: planned }
+
+  - id: library.export
+    title: 把专辑原样导出到"文件"App
+    category: library
+    priority: P1
+    platforms: { ios: planned }
+    why: [principles（用户的文件始终属于用户）]
+
+  - id: library.cue
+    title: CUE 整轨切分为虚拟曲目
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    why: [forums-2026-11（中文用户常见 FLAC/APE + CUE 整轨）]
+    notes: 是否放进首发（P0）待确认。
+
+  - id: library.linked-folders
+    title: 关联外部文件夹，只引用不拷贝（C 方案）
+    category: library
+    priority: P2
+    platforms: { ios: planned, macos: done }
+    why: [reviews-2026-11（想直接播放外接 SSD，不占手机空间）]
+    notes: 与 App 管理的曲库并存。外部文件不可用时（iCloud 未下载、外接盘断开）必须在界面上标出。
+
+  - id: library.finder-transfer
+    title: 通过 Finder 用数据线批量传歌
+    category: library
+    priority: P1
+    platforms: { ios: done, macos: n/a }
+    acceptance:
+      - 放入 Finder 中 Closure 文件夹的音乐，在 App 回到前台后进入曲库。
+
+  - id: library.share-sheet
+    title: 从分享菜单"在 Closure 中打开"
+    category: library
+    priority: P2
+    platforms: { ios: partial }
+    notes: 已实现，未在真机验证。
+
+  - id: library.wifi-transfer
+    title: 局域网网页传歌
+    category: library
+    priority: P2
+    platforms: { ios: planned, macos: n/a }
+    why: [forums-2026-11]
+
+  - id: library.file-safety
+    title: 文件不丢失，存储占用清楚
+    category: library
+    priority: P0
+    platforms: { ios: partial, macos: n/a }
+    why: [reviews-2026-11（"离线文件凭空消失"，Evermusic、Flacbox）]
+    acceptance:
+      - App 更新后曲库完整，文件路径全部以相对路径保存。
+      - 启动时发现缺失或损坏的文件，并告诉用户。
+      - 设置中显示曲库占用空间。删除文件前要确认。
+    notes: 曲库目录已排除在 iCloud 设备备份之外。在 sync.backup 完成前，换机或丢机会丢失音乐，需要在界面上说明。
+
+  - id: library.database
+    title: 用数据库保存曲库，替代 JSON 索引
+    category: library
+    priority: P0
+    platforms: { ios: planned, macos: partial }
+    acceptance:
+      - 5 万首曲目时，读写和查询都不阻塞界面。
+    notes: iOS 原型用 library.json。macOS 用 library.xml。
+
+  - id: library.performance
+    title: 大曲库下秒开，边扫描边播放
+    category: library
+    priority: P0
+    platforms: { ios: planned, macos: planned }
+    why: [reviews-2026-11（2 万首时每次点击都延迟数秒；必须扫描完才能播放）]
+    acceptance:
+      - 5 万首曲目时冷启动到可交互少于 1 秒（iPhone 12 级别设备）。
+      - 增量扫描。扫描期间可以浏览和播放已识别的曲目。
+
+  - id: library.tag-parsing
+    title: 宽容的标签解析，不乱码
+    category: library
+    priority: P0
+    platforms: { ios: partial, macos: partial }
+    why: [reviews-2026-11（标签读错、文件名乱码、俄语乱码）, forums-2026-11]
+    acceptance:
+      - 支持 ID3v1/v2（含 GBK、Big5 等非 UTF-8 编码）、Vorbis comment、MP4 和 APE 标签。
+      - 读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面、内嵌歌词。
+      - 用一组故意写坏的标签样本做回归测试。
+    notes: iOS 原型只读 AVFoundation 的通用字段，FLAC 标签尚未验证。macOS 不读作曲家。
+
+  - id: library.album-grouping
+    title: 按专辑艺人归类，合辑不拆散，多碟顺序正确
+    category: library
+    priority: P0
+    platforms: { ios: partial, macos: done }
+    why: [reviews-2026-11（按单曲艺人归类导致合辑被拆散；多碟顺序乱）]
+    acceptance:
+      - 合辑显示为一张专辑。多碟专辑按碟号、再按音轨号排序。
+    notes: iOS 原型按专辑名和文件夹归类，不读专辑艺人和碟号。macOS 以文件夹为专辑。
+
+  - id: library.browse-sort
+    title: 按艺人、专辑、流派、作曲家、年份浏览和排序，带字母索引
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: partial }
+    why: [reviews-2026-11]
+
+  - id: library.search
+    title: 全库搜索，支持中文和拼音首字母
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    why: [reviews-2026-11（不能用中文搜索）]
+    acceptance:
+      - 可以按标题、艺人、专辑、作曲家搜索。输入"zjl"能找到"周杰伦"。
+
+  - id: library.artwork
+    title: 封面优先用内嵌图片，绝不错配，可手动替换
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: done }
+    why: [reviews-2026-11（自动配错封面，或所有歌同一张）]
+    acceptance:
+      - 顺序：内嵌封面，文件夹内 cover/folder 图片，用户指定。不自动联网替换。
+
+  - id: library.batch-ops
+    title: 批量删除、批量加入歌单、批量收藏
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    why: [reviews-2026-11（不能批量删除，只能删 App 重装）]
+
+  - id: library.playlists
+    title: 歌单、歌单文件夹、收藏
+    category: library
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    why: [reviews-2026-11（歌单不支持文件夹；离线歌单被收费）]
+
+  - id: library.metadata-edit
+    title: 在 App 内编辑标签
+    category: library
+    priority: P2
+    platforms: { ios: planned, macos: partial }
+    notes: macOS 可以修改专辑名、专辑艺人和封面。
+
+  - id: library.musicbrainz
+    title: 由用户触发的 MusicBrainz 元数据匹配
+    category: library
+    priority: P2
+    platforms: { ios: planned, macos: done }
+    why: [forums-2026-11（自动刮削）]
+    notes: 不在导入时自动联网。
+
+  # ---------------------------------------------------------------- 歌词
+
+  - id: lyrics.local
+    title: 显示内嵌歌词和 .lrc 歌词，支持逐行同步
+    category: lyrics
+    priority: P1
+    platforms: { ios: planned, macos: done }
+    why: [forums-2026-11]
+
+  - id: lyrics.online
+    title: 在线匹配歌词（LRCLIB）
+    category: lyrics
+    priority: P2
+    platforms: { ios: planned, macos: done }
+    why: [forums-2026-11]
+    notes: 有开发者称在线歌词会因版权被 App Store 拒绝，但也有已上架 App 提供此功能。开发前先查审核指南。
+
+  - id: lyrics.lock-screen
+    title: 锁屏显示当前一句歌词
+    category: lyrics
+    priority: P3
+    platforms: { ios: planned }
+    why: [forums-2026-11（有用户专门为此找播放器）]
+    notes: 可能用 Live Activity 实现。需要先确认审核是否允许。
+
+  # ---------------------------------------------------------------- 系统集成
+
+  - id: integration.carplay
+    title: CarPlay
+    category: integration
+    priority: P1
+    platforms: { ios: planned }
+    why: [reviews-2026-11（系统集成 19 条，14 个 App）, forums-2026-11]
+    notes: 需要先向 Apple 申请 CarPlay 音频 entitlement，审批需要时间，应尽早申请。
+
+  - id: integration.shortcuts
+    title: 快捷指令和 Siri 播放
+    category: integration
+    priority: P2
+    platforms: { ios: planned, macos: planned }
+    why: [forums-2026-11（快捷指令一键播放）, reviews-2026-11（开车时想用语音控制）]
+
+  - id: integration.widgets
+    title: 桌面和锁屏小组件
+    category: integration
+    priority: P3
+    platforms: { ios: planned }
+
+  - id: integration.watch
+    title: Apple Watch 控制与离线播放
+    category: integration
+    priority: P3
+    platforms: { watchos: deferred }
+
+  # ---------------------------------------------------------------- 同步与备份
+
+  - id: sync.backup
+    title: 把曲库文件和数据库备份到 iCloud Drive 或 Google Drive
+    category: sync
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    acceptance:
+      - 换机后可以从备份完整恢复曲库、歌单和收藏。
+    notes: 只做备份，不做流媒体播放。
+
+  - id: sync.mac-iphone
+    title: Mac 和 iPhone 共享同一套曲库（歌单、收藏、播放统计）
+    category: sync
+    priority: P2
+    platforms: { ios: planned, macos: planned }
+    why: [forums-2026-11（Doppler 被批评不能在 Mac 和 iPhone 之间同步）]
+    notes: 这是 Closure 的差异化方向。
+
+  # ---------------------------------------------------------------- 格式
+
+  - id: format.core
+    title: FLAC、ALAC、AAC、MP3、WAV、AIFF、CAF
+    category: format
+    priority: P0
+    platforms: { ios: done, macos: done }
+    acceptance:
+      - FLAC 和 ALAC 解码逐个采样精确。AAC 去除编码器延迟和填充。
+
+  - id: format.ogg-opus
+    title: Ogg Vorbis 和 Opus
+    category: format
+    priority: P3
+    platforms: { ios: deferred, macos: partial }
+    notes: 系统不能解码，需要引入 libvorbis/libopus（BSD 许可证）。macOS 通过 JUCE 支持 Ogg Vorbis。
+
+  - id: format.ape
+    title: APE（Monkey's Audio）
+    category: format
+    priority: P3
+    platforms: { ios: deferred, macos: deferred }
+    why: [forums-2026-11（中文用户曲库常见）]
+    notes: 需要核实解码库的许可证。
+
+  - id: format.multichannel
+    title: 超过两个声道的文件
+    category: format
+    priority: P3
+    platforms: { ios: deferred, macos: deferred }
+
+  - id: format.dsd
+    title: DSD（DSF/DFF），包括 DoP 输出
+    category: format
+    priority: P3
+    platforms: { ios: deferred, macos: deferred }
+    why: [forums-2026-11]
+
+  # ---------------------------------------------------------------- 质量证明
+
+  - id: quality.measurement-suite
+    title: 可重复运行的音质测量报告
+    category: quality
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    acceptance:
+      - 覆盖 null test、重采样指标、曲目边界误差、跳变能量。
+      - 对照组：macOS 现有内核、AVAudioEngine、AVQueuePlayer。
+
+  - id: quality.energy-benchmark
+    title: 真机耗电基准
+    category: quality
+    priority: P1
+    platforms: { ios: planned }
+    acceptance:
+      - 飞行模式下锁屏播放 2 小时，记录电量和 Energy Log，每个对照播放器测 3 次。
+
+  # ---------------------------------------------------------------- 商业
+
+  - id: commerce.one-time-purchase
+    title: 一次性买断
+    category: commerce
+    priority: P0
+    platforms: { ios: planned, macos: n/a }
+    why: [reviews-2026-11（收费 37 条，近三年最多）]
+    acceptance:
+      - 购买、恢复购买、家人共享、退款后状态都经过测试。
+      - 购买后不出现任何广告或捐款请求。
+    notes: macOS 版目前免费，通过 Sparkle 在 App Store 之外分发。
+
+  # ---------------------------------------------------------------- 体验与无障碍
+
+  - id: ux.accessibility
+    title: VoiceOver、动态字体、足够大的点击区域
+    category: ux
+    priority: P1
+    platforms: { ios: partial, macos: planned }
+    why: [reviews-2026-11（盲人用户和视力不好的用户的差评）]
+    acceptance:
+      - 只用 VoiceOver 可以完成导入、浏览、播放全部流程。
+
+  - id: ux.localization
+    title: 界面支持简体中文、繁体中文、英文
+    category: ux
+    priority: P1
+    platforms: { ios: planned, macos: planned }
+    why: [reviews-2026-11（界面语言无法切换、弹窗语言混杂）]
+    acceptance:
+      - 跟随系统语言。所有弹窗和提示都有翻译。
+
+  # ---------------------------------------------------------------- 平台
+
+  - id: platform.ipad
+    title: iPad 版
+    category: platform
+    priority: P2
+    platforms: { ipados: planned }
+
+  - id: platform.min-os
+    title: 支持较旧的系统版本
+    category: platform
+    priority: P1
+    platforms: { ios: done, macos: done }
+    why: [reviews-2026-11（只支持最新系统或放弃旧系统被差评）]
+    notes: iOS 最低 17.0，macOS 最低 11.0。提高最低版本前要评估影响的用户。
+
+  # ---------------------------------------------------------------- 明确不做
+
+  - id: library.network-streaming
+    title: 从 WebDAV、SMB、NAS、网盘直接流式播放
+    category: library
+    priority: P3
+    platforms: { ios: not-planned, macos: not-planned }
+    why: [reviews-2026-11（网盘与 NAS 差评 22 条，实现复杂且不稳定）]
+    notes: 与"本地管理、云端只备份"的原则不符。可以通过 library.import 从这些位置导入。
