@@ -15,6 +15,8 @@ final class LibraryStore {
     private(set) var isImporting = false
     /// The result of the last import, until the user dismisses it.
     var importSummary: ImportSummary?
+    /// Recently Deleted, newest first.
+    private(set) var trashEntries: [TrashStore.Entry] = []
 
     nonisolated static var libraryFolder: URL { LibraryPaths.musicFolder }
 
@@ -31,11 +33,22 @@ final class LibraryStore {
 
     @ObservationIgnored private var tracksByID: [String: Track] = [:]
     @ObservationIgnored private let importer = FileImporter(libraryRoot: LibraryStore.libraryFolder)
+    @ObservationIgnored private let trash: TrashStore = {
+        var folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Trash", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? folder.setResourceValues(values)
+        return TrashStore(libraryRoot: LibraryStore.libraryFolder, trashRoot: folder)
+    }()
 
     init() {
         prepareFolders()
         loadIndex()
         rebuildAlbums()
+        trash.purgeExpired()
+        trashEntries = trash.entries
     }
 
     // MARK: - Import
@@ -71,9 +84,35 @@ final class LibraryStore {
         importSummary = ImportSummary(source: "Finder", report: report)
     }
 
+    // MARK: - Recently Deleted
+
+    /// Moves the track to Recently Deleted. It can be restored until it expires.
     func delete(_ track: Track) async {
-        try? FileManager.default.removeItem(at: track.url)
+        _ = try? trash.moveToTrash(relativePath: track.id, title: track.title, artist: track.artist, album: track.album)
+        trashEntries = trash.entries
         await rescan()
+    }
+
+    func restore(_ entry: TrashStore.Entry) async {
+        _ = try? trash.restore(entry)
+        trashEntries = trash.entries
+        await rescan()
+    }
+
+    func restoreAll() async {
+        for entry in trash.entries { _ = try? trash.restore(entry) }
+        trashEntries = trash.entries
+        await rescan()
+    }
+
+    func deletePermanently(_ entry: TrashStore.Entry) {
+        trash.deletePermanently(entry)
+        trashEntries = trash.entries
+    }
+
+    func emptyTrash() {
+        for entry in trash.entries { trash.deletePermanently(entry) }
+        trashEntries = trash.entries
     }
 
     private static func isAudio(_ url: URL) -> Bool {

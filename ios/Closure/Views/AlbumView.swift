@@ -32,7 +32,7 @@ struct AlbumView: View {
                 Task { await library.delete(track) }
             }
         } message: { _ in
-            Text("The file is removed from this iPhone. It cannot be restored.")
+            Text("It moves to Recently Deleted. You can restore it for 30 days.")
         }
     }
 
@@ -113,7 +113,7 @@ struct AlbumView: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    Button("Delete from iPhone…", systemImage: "trash", role: .destructive) { pendingDelete = track }
+                    Button("Delete…", systemImage: "trash", role: .destructive) { pendingDelete = track }
                 }
                 Hairline()
             }

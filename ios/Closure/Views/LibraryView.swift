@@ -5,6 +5,7 @@ enum LibraryRoute: Hashable {
     case album(String)
     case artist(String)
     case folder(String)
+    case recentlyDeleted
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
@@ -38,6 +39,7 @@ struct LibraryView: View {
                             header
                             tabBar
                             content
+                            recentlyDeletedLink
                         }
                         .padding(.bottom, 32)
                     }
@@ -50,6 +52,7 @@ struct LibraryView: View {
                 case let .album(id): AlbumView(albumID: id)
                 case let .artist(name): ArtistView(artist: name)
                 case let .folder(folder): FolderView(folder: folder)
+                case .recentlyDeleted: RecentlyDeletedView()
                 }
             }
         }
@@ -138,6 +141,34 @@ struct LibraryView: View {
             let folders = foldersList
             countRow(left: "\(folders.count) folders", right: "A–Z")
             listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) track\($0.tracks == 1 ? "" : "s")\(parentPath($0.path))", route: .folder($0.path)) })
+        }
+    }
+
+    /// Shown only when something is in Recently Deleted.
+    @ViewBuilder
+    private var recentlyDeletedLink: some View {
+        if !library.trashEntries.isEmpty {
+            NavigationLink(value: LibraryRoute.recentlyDeleted) {
+                VStack(spacing: 0) {
+                    Hairline()
+                    HStack {
+                        Text("Recently Deleted")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Theme.ink)
+                        Spacer()
+                        MetaText("\(library.trashEntries.count)", size: 10.5)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    .padding(.vertical, 16)
+                    Hairline()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Theme.horizontalMargin)
+            .padding(.top, 40)
         }
     }
 
@@ -230,6 +261,14 @@ struct LibraryView: View {
         case "artists": tab = .artists
         case "folders": tab = .folders
         case "search": showingSearch = true
+        case "trash":
+            // Deletes the second track of the target album, then opens Recently Deleted.
+            Task {
+                await library.delete(target.tracks[min(1, target.tracks.count - 1)])
+                path.append(LibraryRoute.recentlyDeleted)
+            }
+        case "restore":
+            Task { await library.restoreAll() }
         case "import":
             var report = FileImporter.Report()
             report.audioFiles = 12

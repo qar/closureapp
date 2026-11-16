@@ -288,12 +288,12 @@ features:
     title: 最近删除
     category: library
     priority: P0
-    platforms: { ios: planned }
+    platforms: { ios: done }
     why: [principles（绝不丢失用户的文件）]
     acceptance:
       - 删除的文件先进"最近删除"，到期后才真正清除，期间可以恢复。
       - 批量删除前要确认。
-    notes: 保留期暂定 30 天，待确认。原型目前左滑直接删除，没有确认。
+    notes: iOS 已实现（2026-11-16）：删除后文件连同同名歌词、CUE 移入 Application Support/Trash，可原位恢复（重名时另存为“名称 2”），30 天后启动时清除，全部删除前确认。保留期 30 天待用户最终确认。目前只有单曲删除，批量选择尚未实现（见 library.batch-ops）。
 
   - id: library.storage-view
     title: 存储页：总占用、每张专辑的大小、剩余空间

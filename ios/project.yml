@@ -54,6 +54,7 @@ targets:
       - path: Closure/Library/AlbumTitleParts.swift
       - path: Closure/Library/ArtworkStore.swift
       - path: Closure/Library/LibraryModels.swift
+      - path: Closure/Library/TrashStore.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qar.closure.tests
