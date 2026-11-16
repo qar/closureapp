@@ -142,7 +142,7 @@ features:
     acceptance:
       - 锁屏和控制中心显示标题、艺人、专辑、封面和进度。
       - 播放、暂停、上一首、下一首、拖动进度都有效。
-    notes: iOS 原型缺少封面。
+    notes: iOS 已显示标题、艺人、专辑、封面和进度（2026-11-16）。尚未在真机上逐项验证锁屏和耳机按键。
 
   - id: playback.declick
     title: 开始、暂停、跳转时不爆音
@@ -156,20 +156,22 @@ features:
     title: 随机播放
     category: playback
     priority: P0
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: partial, macos: planned }
     why: [reviews-2026-11（多个 App 因没有随机播放或随机不均匀被差评）]
     acceptance:
       - 随机顺序在一轮内不重复。
       - 随机播放下仍保持无缝衔接。
+    notes: iOS 专辑页和文件夹页可以随机播放（打乱队列顺序）。正在播放页还没有随机模式开关。
 
   - id: playback.queue
     title: 播放队列：下一首播放、稍后播放、查看和调整队列
     category: playback
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: partial, macos: partial }
     why: [reviews-2026-11]
     acceptance:
       - 可以把单曲或整张专辑加入队列，并调整顺序。
+    notes: iOS 可以查看队列并跳到任意曲目。还没有下一首播放和稍后播放。
 
   - id: playback.resume-state
     title: 重启后恢复队列和播放位置
@@ -278,8 +280,9 @@ features:
     title: 按原始文件夹结构浏览
     category: library
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: partial, macos: partial }
     why: [reviews-2026-11（不能按文件夹浏览，古典乐用户尤其需要）]
+    notes: iOS 是平铺的文件夹列表，还不是层级浏览。
 
   - id: library.trash
     title: 最近删除
@@ -400,26 +403,29 @@ features:
     title: 按艺人、专辑、流派、作曲家、年份浏览和排序，带字母索引
     category: library
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: partial, macos: partial }
     why: [reviews-2026-11]
+    notes: iOS 有专辑、艺人、文件夹三个视图。专辑固定按艺人排序，还不能选择排序方式和字母索引。
 
   - id: library.search
     title: 全库搜索，支持中文和拼音首字母
     category: library
     priority: P1
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: partial, macos: planned }
     why: [reviews-2026-11（不能用中文搜索）]
     acceptance:
       - 可以按标题、艺人、专辑、作曲家搜索。输入"zjl"能找到"周杰伦"。
+    notes: iOS 可以按标题、艺人搜索，忽略大小写和变音符号。还不支持拼音首字母和作曲家。
 
   - id: library.artwork
     title: 封面优先用内嵌图片，绝不错配，可手动替换
     category: library
     priority: P1
-    platforms: { ios: planned, macos: done }
+    platforms: { ios: partial, macos: done }
     why: [reviews-2026-11（自动配错封面，或所有歌同一张）]
     acceptance:
       - 顺序：内嵌封面，文件夹内 cover/folder 图片，用户指定。不自动联网替换。
+    notes: iOS 先找文件夹图片（cover、folder、front 等，CD1/CD2 会找上级目录），再读内嵌封面（FLAC PICTURE 块，包括带 ID3 头的文件；其他格式用 AVFoundation）。还不能手动替换。
 
   - id: library.batch-ops
     title: 批量删除、批量加入歌单、批量收藏
