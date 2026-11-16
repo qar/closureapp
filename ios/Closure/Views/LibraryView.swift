@@ -24,6 +24,9 @@ struct LibraryView: View {
     @State private var showingNowPlaying = false
     @State private var showingSearch = false
     @State private var showingFinderHelp = false
+#if DEBUG
+    @State private var debugImportStarted = false
+#endif
 
     var body: some View {
         @Bindable var library = library
@@ -256,6 +259,12 @@ struct LibraryView: View {
     /// signal, queue, import, artists, folders, search.
     private func runDebugLaunchArguments() {
         let arguments = ProcessInfo.processInfo.arguments
+        if let flag = arguments.firstIndex(of: "-ClosureImportPath"), flag + 1 < arguments.count, !debugImportStarted {
+            debugImportStarted = true
+            let url = URL(fileURLWithPath: arguments[flag + 1])
+            Task { await library.importItems([url]) }
+            return
+        }
         guard let flag = arguments.firstIndex(of: "-ClosureScreen"), flag + 1 < arguments.count,
               player.currentTrack == nil, let album = library.albums.first else { return }
         let screen = arguments[flag + 1]

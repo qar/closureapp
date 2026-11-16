@@ -118,21 +118,30 @@ struct ImportResultView: View {
     var body: some View {
         let report = summary.report
         VStack(alignment: .leading, spacing: 0) {
-            Text(report.audioFiles > 0 ? "Imported" : "Nothing imported")
+            Text(report.spaceShortfall != nil ? "Not enough space" : report.audioFiles > 0 ? "Imported" : "Nothing imported")
                 .font(Theme.serif(36))
                 .foregroundStyle(Theme.ink)
                 .padding(.top, 28)
             MetaText("From \(summary.source)", size: 10)
                 .padding(.top, 6)
                 .padding(.bottom, 20)
-            Hairline()
-            row("Tracks", report.audioFiles)
-            row("Covers & lyrics", report.companionFiles)
-            if summary.source == "Finder" {
-                row("Left in Documents", report.leftInPlace.count,
-                    note: names(report.leftInPlace, reason: "not a music file"))
+            if let shortfall = report.spaceShortfall {
+                Text("Nothing was copied. Free up \(ByteCountFormatter.string(fromByteCount: shortfall, countStyle: .file)) on this iPhone, then import again.")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 20)
             }
-            row("Failed", report.failed.count, note: names(report.failed, reason: "left where it was"))
+            if report.spaceShortfall == nil {
+                Hairline()
+                row("Tracks", report.audioFiles)
+                row("Covers & lyrics", report.companionFiles)
+                if summary.source == "Finder" {
+                    row("Left in Documents", report.leftInPlace.count,
+                        note: names(report.leftInPlace, reason: "not a music file"))
+                }
+                row("Failed", report.failed.count, note: names(report.failed, reason: summary.source == "Files" ? "could not be copied intact; the original is unchanged" : "left where it was"))
+            }
             Spacer(minLength: 20)
             Button("Done") { dismiss() }
                 .buttonStyle(PrimaryButtonStyle())

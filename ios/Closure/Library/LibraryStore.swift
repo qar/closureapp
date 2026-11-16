@@ -34,7 +34,7 @@ final class LibraryStore {
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var isScanning = false
     @ObservationIgnored private var rescanRequested = false
-    @ObservationIgnored private let importer = FileImporter(libraryRoot: LibraryStore.libraryFolder)
+    @ObservationIgnored private var importer = FileImporter(libraryRoot: LibraryStore.libraryFolder)
     @ObservationIgnored private let trash: TrashStore = {
         var folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Trash", isDirectory: true)
@@ -47,6 +47,15 @@ final class LibraryStore {
 
     init() {
         prepareFolders()
+#if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let flag = arguments.firstIndex(of: "-ClosureFakeFreeSpace"), flag + 1 < arguments.count,
+           let bytes = Int64(arguments[flag + 1]) {
+            importer.availableSpace = { bytes }
+        }
+#endif
+        // Finish verified imports cut short last time; the next scan picks them up.
+        importer.recoverStaging()
         trash.purgeExpired()
         trashEntries = trash.entries
         let catalog = catalog
@@ -66,18 +75,14 @@ final class LibraryStore {
 
     // MARK: - Import
 
-    /// Copies files or whole folders picked in the Files app into the library.
+    /// Copies files or whole folders picked in the Files app into the library. The copy
+    /// runs in the background, is verified, and does not start when space is short.
     func importItems(_ urls: [URL]) async {
         isImporting = true
         defer { isImporting = false }
-
-        var report = FileImporter.Report()
-        for url in urls {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            report.merge(importer.importItem(url, mode: .copy))
-        }
-        await rescan()
+        let importer = importer
+        let report = await Task.detached(priority: .userInitiated) { importer.importCopies(urls) }.value
+        if report.audioFiles > 0 || report.companionFiles > 0 { await rescan() }
         importSummary = ImportSummary(source: "Files", report: report)
     }
 
@@ -89,7 +94,9 @@ final class LibraryStore {
         isImporting = true
         defer { isImporting = false }
 
-        let report = importer.importInbox(Self.inboxFolder)
+        let importer = importer
+        let inbox = Self.inboxFolder
+        let report = await Task.detached(priority: .userInitiated) { importer.importInbox(inbox) }.value
         // Files Closure does not use stay in Documents. Mention them only when
         // something else happened, so they do not produce a message on every launch.
         guard report.audioFiles > 0 || report.companionFiles > 0 || !report.failed.isEmpty else { return }
