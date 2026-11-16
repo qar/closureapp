@@ -133,11 +133,11 @@ struct LibraryView: View {
         case .artists:
             let artists = artistsList
             countRow(left: "\(artists.count) artists", right: "A–Z")
-            listRows(artists.map { ListRow(title: $0.name, meta: "\($0.albums) album\($0.albums == 1 ? "" : "s") · \($0.tracks) tracks", route: .artist($0.name)) })
+            listRows(artists.map { ListRow(title: $0.name, meta: "\($0.albums) album\($0.albums == 1 ? "" : "s") · \($0.tracks) track\($0.tracks == 1 ? "" : "s")", route: .artist($0.name)) })
         case .folders:
             let folders = foldersList
             countRow(left: "\(folders.count) folders", right: "A–Z")
-            listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) tracks\(parentPath($0.path))", route: .folder($0.path)) })
+            listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) track\($0.tracks == 1 ? "" : "s")\(parentPath($0.path))", route: .folder($0.path)) })
         }
     }
 

@@ -95,7 +95,17 @@ struct AlbumView: View {
     private func trackList(_ album: Album) -> some View {
         LazyVStack(spacing: 0) {
             Hairline()
+            let showsDiscs = album.discs.count > 1
             ForEach(Array(album.tracks.enumerated()), id: \.element.id) { index, track in
+                // A "DISC n" header before the first track of each disc, for multi-disc albums.
+                if showsDiscs, index == 0 || album.tracks[index - 1].discNumber != track.discNumber {
+                    MetaText("Disc \(track.discNumber ?? 1)", size: 10.5, color: Theme.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, index == 0 ? 16 : 28)
+                        .padding(.bottom, 10)
+                        .accessibilityAddTraits(.isHeader)
+                    Hairline()
+                }
                 Button { player.play(album.tracks, from: index, context: album.title) } label: {
                     TrackRow(number: track.trackNumber > 0 ? track.trackNumber : index + 1,
                              title: track.title, duration: track.duration,
