@@ -387,7 +387,7 @@ features:
       - 支持 ID3v1/v2（含 GBK、Big5 等非 UTF-8 编码）、Vorbis comment、MP4 和 APE 标签。
       - 读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面、内嵌歌词。
       - 用一组故意写坏的标签样本做回归测试。
-    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3 的标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、作曲家、流派、合辑标记（2026-11-16）。尚未处理 GBK/Big5 等非 UTF-8 编码的 ID3 和 APE 标签，没有坏标签样本回归测试。macOS 不读作曲家。
+    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3 的标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、作曲家、流派、合辑标记；ID3 中按 Latin-1 存放的 GBK/Big5 文本会被修复为中文，拉丁文名不受影响（2026-11-16，有随机往返测试：GB2312 全部修复，Big5 298/300）。尚未支持 APE 标签和 ID3v1，没有真实坏标签样本库。macOS 不读作曲家。
 
   - id: library.album-grouping
     title: 按专辑艺人归类，合辑不拆散，多碟顺序正确

@@ -113,3 +113,103 @@ final class LibraryGroupingTests: XCTestCase {
         XCTAssertNil(LibraryGrouping.discNumber(fromFolderName: "Discography"))
     }
 }
+
+final class TagTextRepairTests: XCTestCase {
+    /// What AVFoundation returns when `bytes` sit in a frame marked ISO-8859-1.
+    private func latin1(_ bytes: [UInt8]) -> String {
+        String(decoding: bytes.map { Character(Unicode.Scalar($0)) }.map { String($0) }.joined().unicodeScalars.map { UInt16($0.value) }, as: UTF16.self)
+    }
+
+    private func encoded(_ text: String, cfEncoding: CFStringEncodings) -> [UInt8] {
+        let encoding = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding.rawValue)))
+        return [UInt8](text.data(using: encoding)!)
+    }
+
+    func testRepairsGBK() {
+        let garbled = latin1(encoded("周杰伦 - 晴天", cfEncoding: .GB_18030_2000))
+        XCTAssertNotEqual(garbled, "周杰伦 - 晴天")
+        XCTAssertEqual(TagTextRepair.repairCJK(garbled, preferTraditional: false), "周杰伦 - 晴天")
+    }
+
+    func testRepairsBig5WhenTraditionalIsPreferred() {
+        let garbled = latin1(encoded("周杰倫", cfEncoding: .big5_HKSCS_1999))
+        XCTAssertEqual(TagTextRepair.repairCJK(garbled, preferTraditional: true), "周杰倫")
+        let mixed = latin1(encoded("七里香 (Live)", cfEncoding: .big5_HKSCS_1999))
+        XCTAssertEqual(TagTextRepair.repairCJK(mixed, preferTraditional: true), "七里香 (Live)")
+    }
+
+    func testLeavesLatinTextAlone() {
+        for text in ["Café", "Björk", "Mötley Crüe", "Ålesund", "Sigur Rós", "Beyoncé", "naïve", "Ünal",
+                     "Für Elise", "Corazón Niño", "Été", "Señorita", "Dvořák"] {
+            XCTAssertEqual(TagTextRepair.repairCJK(text, preferTraditional: false), text)
+        }
+    }
+
+    func testLeavesCorrectUnicodeAndASCIIAlone() {
+        XCTAssertEqual(TagTextRepair.repairCJK("周杰伦", preferTraditional: false), "周杰伦")
+        XCTAssertEqual(TagTextRepair.repairCJK("Low Light", preferTraditional: false), "Low Light")
+    }
+
+    func testParserRepairsOnlyID3Frames() {
+        let garbled = latin1(encoded("晴天", cfEncoding: .GB_18030_2000))
+        let id3 = TagParser.parse([TagItem(identifier: "id3/TIT2", commonKey: "title", string: garbled)])
+        let vorbis = TagParser.parse([TagItem(identifier: "vorb/TITLE", commonKey: "title", string: garbled)])
+        XCTAssertTrue(id3.title == "晴天" || TagTextRepair.prefersTraditionalChinese)
+        XCTAssertEqual(vorbis.title, garbled, "Vorbis comments are UTF-8 by spec and are not touched")
+    }
+}
+
+final class TagTextRepairCoverageTests: XCTestCase {
+    private struct SeededRandom: RandomNumberGenerator {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return state
+        }
+    }
+
+    private func latin1String(_ bytes: [UInt8]) -> String {
+        String(String.UnicodeScalarView(bytes.map { Unicode.Scalar($0) }))
+    }
+
+    /// Random strings of 2–6 characters from GB2312 level 1 (leads 0xB0–0xD7).
+    func testGB2312RoundTrip() {
+        var random = SeededRandom(state: 42)
+        var repaired = 0
+        var skipped = 0
+        let total = 300
+        for _ in 0..<total {
+            var bytes: [UInt8] = []
+            for _ in 0..<Int.random(in: 2...6, using: &random) {
+                bytes += [UInt8.random(in: 0xB0...0xD7, using: &random), UInt8.random(in: 0xA1...0xFE, using: &random)]
+            }
+            let encoding = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
+            // Unassigned code points (e.g. 0xD7FA–0xD7FE) decode to private-use characters; skip them.
+            guard let original = String(data: Data(bytes), encoding: encoding),
+                  original.unicodeScalars.allSatisfy({ (0x4E00...0x9FFF).contains($0.value) }) else { skipped += 1; continue }
+            if TagTextRepair.repairCJK(latin1String(bytes), preferTraditional: false) == original { repaired += 1 }
+        }
+        XCTAssertEqual(repaired, total - skipped, "every real GB2312 string is repaired")
+    }
+
+    /// Random strings from the frequent Big5 block (leads 0xA4–0xC6).
+    func testBig5RoundTrip() {
+        var random = SeededRandom(state: 7)
+        var repaired = 0
+        var total = 0
+        let encoding = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5_HKSCS_1999.rawValue)))
+        while total < 300 {
+            var bytes: [UInt8] = []
+            for _ in 0..<Int.random(in: 2...6, using: &random) {
+                let trail = Bool.random(using: &random) ? UInt8.random(in: 0x40...0x7E, using: &random) : UInt8.random(in: 0xA1...0xFE, using: &random)
+                bytes += [UInt8.random(in: 0xA4...0xC6, using: &random), trail]
+            }
+            guard let original = String(data: Data(bytes), encoding: encoding),
+                  original.unicodeScalars.allSatisfy({ (0x4E00...0x9FFF).contains($0.value) }) else { continue }
+            total += 1
+            if TagTextRepair.repairCJK(latin1String(bytes), preferTraditional: true) == original { repaired += 1 }
+        }
+        print("Big5 repaired \(repaired)/\(total)")
+        XCTAssertGreaterThanOrEqual(repaired * 100 / total, 90)
+    }
+}

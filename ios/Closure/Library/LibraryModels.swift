@@ -145,7 +145,9 @@ enum TagParser {
     static func parse(_ items: [TagItem]) -> ParsedTags {
         var tags = ParsedTags()
         func text(_ item: TagItem) -> String? {
-            guard let value = item.string?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            guard var value = item.string?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            // ID3 text declared as Latin-1 often holds GBK or Big5 bytes.
+            if item.identifier.hasPrefix("id3/") { value = TagTextRepair.repairCJK(value) }
             return value
         }
         for item in items {
@@ -194,6 +196,70 @@ enum TagParser {
         guard let range = string.range(of: #"\d{4}"#, options: .regularExpression),
               let value = Int(string[range]), (1000...2999).contains(value) else { return nil }
         return value
+    }
+}
+
+/// Repairs Chinese text that was decoded as Latin-1.
+///
+/// Many Chinese MP3s store GBK or Big5 bytes in ID3 frames marked ISO-8859-1, so
+/// "周杰伦" arrives as "ÖÜ½ÜÂ×". The text is turned back into bytes and decoded as
+/// GB18030 or Big5, but only when all of these hold:
+/// - every character is U+00FF or below, so the bytes can be recovered;
+/// - every byte of 0x80 or above starts a double-byte pair (lead 0x81–0xFE,
+///   trail 0x40–0x7E or 0x80–0xFE);
+/// - fewer than half of the pairs look like Latin text, i.e. an accented letter
+///   (0xC0 and above) followed by a lowercase ASCII letter, as in "ör" or "ón";
+/// - the decoded text contains Chinese characters, and every non-ASCII character
+///   in it is Chinese or CJK punctuation.
+/// Latin names such as "Björk", "Mötley Crüe" or "Corazón" are left unchanged.
+enum TagTextRepair {
+    static func repairCJK(_ text: String, preferTraditional: Bool = prefersTraditionalChinese) -> String {
+        guard text.unicodeScalars.contains(where: { $0.value >= 0x80 }),
+              text.unicodeScalars.allSatisfy({ $0.value <= 0xFF }) else { return text }
+        let bytes = text.unicodeScalars.map { UInt8($0.value) }
+
+        var pairs = 0
+        var latinLike = 0
+        var index = 0
+        while index < bytes.count {
+            let lead = bytes[index]
+            if lead < 0x80 { index += 1; continue }
+            guard index + 1 < bytes.count, (0x81...0xFE).contains(lead) else { return text }
+            let trail = bytes[index + 1]
+            guard (0x40...0x7E).contains(trail) || (0x80...0xFE).contains(trail) else { return text }
+            pairs += 1
+            if lead >= 0xC0 && (0x61...0x7A).contains(trail) { latinLike += 1 }
+            index += 2
+        }
+        guard pairs > 0, latinLike * 2 < pairs else { return text }
+
+        let gb = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
+        let big5 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5_HKSCS_1999.rawValue)))
+        for encoding in preferTraditional ? [big5, gb] : [gb, big5] {
+            guard let decoded = String(data: Data(bytes), encoding: encoding) else { continue }
+            let nonASCII = decoded.unicodeScalars.filter { $0.value >= 0x80 }
+            if nonASCII.contains(where: isCJKIdeograph), nonASCII.allSatisfy(isCJKText) {
+                return decoded
+            }
+        }
+        return text
+    }
+
+    private static func isCJKIdeograph(_ scalar: Unicode.Scalar) -> Bool {
+        (0x4E00...0x9FFF).contains(scalar.value) || (0x3400...0x4DBF).contains(scalar.value)
+    }
+
+    /// Ideographs, CJK punctuation, fullwidth forms and general punctuation.
+    private static func isCJKText(_ scalar: Unicode.Scalar) -> Bool {
+        isCJKIdeograph(scalar)
+            || (0x3000...0x303F).contains(scalar.value)
+            || (0xFF00...0xFFEF).contains(scalar.value)
+            || (0x2000...0x206F).contains(scalar.value)
+    }
+
+    static var prefersTraditionalChinese: Bool {
+        guard let language = Locale.preferredLanguages.first?.lowercased() else { return false }
+        return language.hasPrefix("zh-hant") || language.hasPrefix("zh-tw") || language.hasPrefix("zh-hk") || language.hasPrefix("zh-mo")
     }
 }
 
