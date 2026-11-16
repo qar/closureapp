@@ -324,6 +324,18 @@ features:
     why: [reviews-2026-11（想直接播放外接 SSD，不占手机空间）]
     notes: 与 App 管理的曲库并存。外部文件不可用时（iCloud 未下载、外接盘断开）必须在界面上标出。
 
+  - id: library.google-drive-import
+    title: 在 App 内浏览 Google Drive，选择文件或整个文件夹导入
+    category: library
+    priority: P1
+    platforms: { ios: partial }
+    why: [用户要求（2026-11-16）；竞品在 App 内浏览 Drive，系统浏览器里的选择器体验差]
+    acceptance:
+      - 登录一次后，在 App 内浏览“我的云端硬盘”“共享云端硬盘”“与我共享”，只显示文件夹和音频文件。
+      - 可以跨文件夹多选文件或整个文件夹，导入走下载、空间检查、暂存校验流程。
+      - 刷新令牌存放在钥匙串，访问令牌自动刷新；登录过期时提示重新登录；可以退出并撤销授权。
+    notes: 使用受限权限 drive.readonly。测试状态下最多 100 个测试用户可用（会显示未验证提示，刷新令牌约 7 天过期）。正式发布前必须通过 Google 受限权限审核（约 6 周、每年复审，是否需要付费的 CASA 安全评估待确认）。审核被拒时退回 drive.file + Google 选择器（代码已保留）和“文件”App 导入。Google 授权页名称暂用 QAR Music，因为 Google 拒绝 “Closure” 这个名字。
+
   - id: library.finder-transfer
     title: 通过 Finder 用数据线批量传歌
     category: library

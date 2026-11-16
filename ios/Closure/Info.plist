@@ -35,6 +35,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>GoogleClientID</key>
+	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
+	<key>GoogleCallbackScheme</key>
+	<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

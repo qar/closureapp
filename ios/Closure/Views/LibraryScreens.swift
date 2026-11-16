@@ -4,6 +4,7 @@ struct EmptyLibraryView: View {
     let isImporting: Bool
     var progress: (done: Int, total: Int)?
     let onImport: () -> Void
+    let onGoogleDrive: () -> Void
     let onFinderHelp: () -> Void
 
     var body: some View {
@@ -49,6 +50,16 @@ struct EmptyLibraryView: View {
                 .padding(.horizontal, 48)
                 .padding(.top, 36)
                 .disabled(isImporting)
+            Button(action: onGoogleDrive) {
+                Text("Import from Google Drive")
+                    .font(.system(size: 15))
+                    .underline()
+                    .foregroundStyle(Theme.ink)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+            .disabled(isImporting)
             Button(action: onFinderHelp) {
                 Text("How to copy with Finder")
                     .font(.system(size: 15))
@@ -140,7 +151,7 @@ struct ImportResultView: View {
                     row("Left in Documents", report.leftInPlace.count,
                         note: names(report.leftInPlace, reason: "not a music file"))
                 }
-                row("Failed", report.failed.count, note: names(report.failed, reason: summary.source == "Files" ? "could not be copied intact; the original is unchanged" : "left where it was"))
+                row("Failed", report.failed.count, note: names(report.failed, reason: summary.source == "Finder" ? "left where it was" : "could not be copied intact; the original is unchanged"))
             }
             Spacer(minLength: 20)
             Button("Done") { dismiss() }

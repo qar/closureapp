@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -24,6 +25,9 @@ struct LibraryView: View {
     @State private var showingNowPlaying = false
     @State private var showingSearch = false
     @State private var showingFinderHelp = false
+    @State private var showingDrive = false
+    @Environment(GoogleDriveAccount.self) private var driveAccount
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 #if DEBUG
     @State private var debugImportStarted = false
 #endif
@@ -37,8 +41,9 @@ struct LibraryView: View {
                     Theme.paper
                 } else if library.albums.isEmpty {
                     EmptyLibraryView(isImporting: library.isImporting || library.scanProgress != nil,
-                                     progress: library.scanProgress,
+                                     progress: library.downloadProgress ?? library.scanProgress,
                                      onImport: { showingImporter = true },
+                                     onGoogleDrive: openGoogleDrive,
                                      onFinderHelp: { showingFinderHelp = true })
                 } else {
                     ScrollView {
@@ -84,6 +89,16 @@ struct LibraryView: View {
             }
         }
         .sheet(isPresented: $showingFinderHelp) { FinderHelpView() }
+        .sheet(isPresented: $showingDrive) {
+            DriveBrowserView()
+                .presentationBackground(Theme.paper)
+                .presentationDragIndicator(.visible)
+        }
+        .alert("Google Drive", isPresented: Binding(get: { library.driveError != nil }, set: { if !$0 { library.driveError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(library.driveError ?? "")
+        }
 #if DEBUG
         .task(id: library.albums.count) { runDebugLaunchArguments() }
 #endif
@@ -102,7 +117,17 @@ struct LibraryView: View {
                 ProgressView().tint(Theme.ink).frame(width: 44, height: 44)
             }
             IconButton(systemName: "magnifyingglass", label: "Search") { showingSearch = true }
-            IconButton(systemName: "plus", label: "Import") { showingImporter = true }
+            Menu {
+                Button("From Files", systemImage: "folder") { showingImporter = true }
+                Button("From Google Drive", systemImage: "icloud.and.arrow.down") { openGoogleDrive() }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Import")
         }
         .padding(.leading, Theme.horizontalMargin)
         .padding(.trailing, 14)
@@ -179,10 +204,38 @@ struct LibraryView: View {
         }
     }
 
-    /// "Reading 120 / 3000" while a scan reads new files.
+    /// "Downloading 3 / 12" or "Reading 120 / 3000" while work is in progress.
     private var scanText: String? {
+        if let progress = library.downloadProgress, progress.total > 0 {
+            return "Downloading \(progress.done) / \(progress.total)"
+        }
         guard let progress = library.scanProgress, progress.total > 0 else { return nil }
         return "Reading \(progress.done) / \(progress.total)"
+    }
+
+    /// Opens the Drive browser, signing in first when needed. Cancelling is not an error.
+    private func openGoogleDrive() {
+        guard !driveAccount.isSignedIn else {
+            showingDrive = true
+            return
+        }
+        Task {
+            do {
+                try await driveAccount.signIn { url, scheme in
+                    do {
+                        return try await webAuthenticationSession.authenticate(using: url, callbackURLScheme: scheme,
+                                                                               preferredBrowserSession: .shared)
+                    } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+                        throw GoogleDrive.DriveError.cancelled
+                    }
+                }
+                showingDrive = true
+            } catch GoogleDrive.DriveError.cancelled {
+                return
+            } catch {
+                library.driveError = error.localizedDescription
+            }
+        }
     }
 
     private func countRow(left: String, right: String) -> some View {
@@ -280,6 +333,7 @@ struct LibraryView: View {
         case "artists": tab = .artists
         case "folders": tab = .folders
         case "search": showingSearch = true
+        case "drive": showingDrive = true
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.
             Task {

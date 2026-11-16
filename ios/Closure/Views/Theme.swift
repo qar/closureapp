@@ -80,6 +80,19 @@ struct OutlineButtonStyle: ButtonStyle {
     }
 }
 
+/// Small filled capsule for the one main action of a bar, e.g. "Import".
+struct PillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Theme.paper)
+            .padding(.horizontal, 20)
+            .frame(minHeight: 40)
+            .background(Theme.ink.opacity(configuration.isPressed ? 0.8 : 1), in: Capsule())
+            .contentShape(Capsule())
+    }
+}
+
 /// Icon-only button with a 44 pt hit area.
 struct IconButton: View {
     let systemName: String

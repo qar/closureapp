@@ -4,6 +4,7 @@ import SwiftUI
 struct ClosureApp: App {
     @State private var library = LibraryStore()
     @State private var player = PlayerModel()
+    @State private var driveAccount = GoogleDriveAccount()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -11,6 +12,7 @@ struct ClosureApp: App {
             LibraryView()
                 .environment(library)
                 .environment(player)
+                .environment(driveAccount)
                 // Only the light "paper" palette is designed so far.
                 .preferredColorScheme(.light)
                 .tint(Theme.ink)

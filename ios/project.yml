@@ -22,6 +22,9 @@ targets:
   Closure:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Closure/GoogleOAuth.xcconfig
+      Release: Closure/GoogleOAuth.xcconfig
     sources:
       - path: Closure
       - path: ../core/src
@@ -58,6 +61,7 @@ targets:
       - path: Closure/Library/LibraryModels.swift
       - path: Closure/Library/TrashStore.swift
       - path: Closure/Library/LibraryDatabase.swift
+      - path: Closure/Library/GoogleDrive.swift
     dependencies:
       - sdk: libsqlite3.tbd
     settings:
