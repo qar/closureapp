@@ -65,11 +65,27 @@ struct ClosureApp: App {
                         }
                     }
                 }
+                .onChange(of: library.isLoaded, initial: true) { _, loaded in
+                    // Put back what was playing last time, paused.
+                    if loaded { player.restore(from: library.albums) }
+#if DEBUG
+                    // -ClosureResume: press play after the restore and log where playback is.
+                    if loaded, ProcessInfo.processInfo.arguments.contains("-ClosureResume") {
+                        player.resume()
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            print(String(format: "[Closure] resumed: track %d at %.1f s, playing %d",
+                                         player.currentIndex + 1, player.progress.position, player.isPlaying ? 1 : 0))
+                        }
+                    }
+#endif
+                }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     if phase == .active {
                         Task { await library.importInbox() }
                     }
                     Task { await downloads.setBackground(phase == .background) }
+                    if phase != .active { player.saveState() }
                 }
         }
     }

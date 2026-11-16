@@ -32,8 +32,8 @@ struct NowPlayingView: View {
                 .padding(.top, 24)
 
                 TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-                    let status = player.status
-                    ProgressScrubber(position: status.positionSeconds, duration: status.durationSeconds) { seconds in
+                    let progress = player.progress
+                    ProgressScrubber(position: progress.position, duration: progress.duration) { seconds in
                         player.seek(to: seconds)
                     }
                 }

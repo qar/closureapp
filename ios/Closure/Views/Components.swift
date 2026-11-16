@@ -89,8 +89,8 @@ struct MiniPlayer: View {
     /// Updates once a second, and only while playing.
     private var progressLine: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let status = player.status
-            let fraction = status.durationSeconds > 0 ? min(1, status.positionSeconds / status.durationSeconds) : 0
+            let progress = player.progress
+            let fraction = progress.duration > 0 ? min(1, progress.position / progress.duration) : 0
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Rectangle().fill(Theme.ink.opacity(0.12))

@@ -177,11 +177,13 @@ features:
     title: 重启后恢复队列和播放位置
     category: playback
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: done, macos: partial }
     why: [reviews-2026-11（暂停一段时间后从头播放）]
     acceptance:
       - App 被系统结束后重新打开，队列、曲目和位置都与之前相同。
-    notes: macOS 当前恢复播放列表，不恢复播放位置。
+      - 打开 App 时不激活音频会话，不打断其他 App 正在播放的声音；按播放后才装载队列，先跳到保存的位置再出声。
+      - 期间被删除的曲目从队列中去掉；当前曲目被删除时从下一首的开头继续。
+    notes: iOS 在开始播放、暂停、切歌、拖动进度、改重复模式和 App 离开前台时保存（2026-11-16），不用定时器，不增加耗电。macOS 当前恢复播放列表，不恢复播放位置。
 
   - id: playback.signal-path
     title: 显示完整信号路径
