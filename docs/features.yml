@@ -362,20 +362,21 @@ features:
     title: 用数据库保存曲库，替代 JSON 索引
     category: library
     priority: P0
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: done, macos: partial }
     acceptance:
       - 5 万首曲目时，读写和查询都不阻塞界面。
-    notes: iOS 原型用 library.json。macOS 用 library.xml。
+    notes: iOS 用系统 SQLite（WAL，批量事务写入，schema 版本号），旧的 library.json 在首次启动时迁移后删除（2026-11-16）。macOS 用 library.xml。
 
   - id: library.performance
     title: 大曲库下秒开，边扫描边播放
     category: library
     priority: P0
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: done, macos: planned }
     why: [reviews-2026-11（2 万首时每次点击都延迟数秒；必须扫描完才能播放）]
     acceptance:
       - 5 万首曲目时冷启动到可交互少于 1 秒（iPhone 12 级别设备）。
       - 增量扫描。扫描期间可以浏览和播放已识别的曲目。
+    notes: iOS 实测（iPhone 12 Pro，Debug 构建，2026-11-16）：50,017 首读库并分组 251–264 ms；有 5 万行时扫描（比对加删除）254 ms。读库、分组、扫描都在后台 actor，标签 4 个文件并发读取，扫描中约每秒刷新一次，可以边扫边浏览和播放。尚未用真实 5 万个文件测首次导入时的标签读取速度。
 
   - id: library.tag-parsing
     title: 宽容的标签解析，不乱码

@@ -41,6 +41,8 @@ targets:
         # Same App Store Connect team as Modocus (Qiao Anran, paid account).
         DEVELOPMENT_TEAM: L9WF5HSH87
         ENABLE_PREVIEWS: YES
+    dependencies:
+      - sdk: libsqlite3.tbd
     scheme:
       testTargets:
         - ClosureTests
@@ -55,6 +57,9 @@ targets:
       - path: Closure/Library/ArtworkStore.swift
       - path: Closure/Library/LibraryModels.swift
       - path: Closure/Library/TrashStore.swift
+      - path: Closure/Library/LibraryDatabase.swift
+    dependencies:
+      - sdk: libsqlite3.tbd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qar.closure.tests

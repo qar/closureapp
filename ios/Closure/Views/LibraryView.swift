@@ -29,8 +29,12 @@ struct LibraryView: View {
         @Bindable var library = library
         NavigationStack(path: $path) {
             Group {
-                if library.albums.isEmpty {
-                    EmptyLibraryView(isImporting: library.isImporting,
+                if !library.isLoaded {
+                    // The database loads in well under a second; show plain paper meanwhile.
+                    Theme.paper
+                } else if library.albums.isEmpty {
+                    EmptyLibraryView(isImporting: library.isImporting || library.scanProgress != nil,
+                                     progress: library.scanProgress,
                                      onImport: { showingImporter = true },
                                      onFinderHelp: { showingFinderHelp = true })
                 } else {
@@ -131,7 +135,7 @@ struct LibraryView: View {
     private var content: some View {
         switch tab {
         case .albums:
-            countRow(left: "\(library.albums.count) albums", right: "Sort: Artist")
+            countRow(left: "\(library.albums.count) albums", right: scanText ?? "Sort: Artist")
             AlbumGrid(albums: library.albums)
         case .artists:
             let artists = artistsList
@@ -170,6 +174,12 @@ struct LibraryView: View {
             .padding(.horizontal, Theme.horizontalMargin)
             .padding(.top, 40)
         }
+    }
+
+    /// "Reading 120 / 3000" while a scan reads new files.
+    private var scanText: String? {
+        guard let progress = library.scanProgress, progress.total > 0 else { return nil }
+        return "Reading \(progress.done) / \(progress.total)"
     }
 
     private func countRow(left: String, right: String) -> some View {

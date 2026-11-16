@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 import Observation
 
@@ -12,6 +11,10 @@ import Observation
 @Observable
 final class LibraryStore {
     private(set) var albums: [Album] = []
+    /// False until the database has been read once, so the empty state never flashes.
+    private(set) var isLoaded = false
+    /// Files read so far and files to read, while a scan reads new or changed files.
+    private(set) var scanProgress: (done: Int, total: Int)?
     private(set) var isImporting = false
     /// The result of the last import, until the user dismisses it.
     var importSummary: ImportSummary?
@@ -20,18 +23,17 @@ final class LibraryStore {
 
     nonisolated static var libraryFolder: URL { LibraryPaths.musicFolder }
 
-    /// Bump when the fields read from files change, so every file is read again once.
-    private static let indexVersion = 2
-
-    private static let indexFile: URL = {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("library.json")
-    }()
-
     /// Finder file sharing shows this folder. Files placed here are imported.
     private static let inboxFolder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
-    @ObservationIgnored private var tracksByID: [String: Track] = [:]
+    @ObservationIgnored private let catalog: LibraryCatalog = {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return LibraryCatalog(databaseURL: support.appendingPathComponent("Library/library.sqlite"),
+                              legacyIndexURL: support.appendingPathComponent("library.json"))
+    }()
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
+    @ObservationIgnored private var isScanning = false
+    @ObservationIgnored private var rescanRequested = false
     @ObservationIgnored private let importer = FileImporter(libraryRoot: LibraryStore.libraryFolder)
     @ObservationIgnored private let trash: TrashStore = {
         var folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -45,10 +47,21 @@ final class LibraryStore {
 
     init() {
         prepareFolders()
-        loadIndex()
-        rebuildAlbums()
         trash.purgeExpired()
         trashEntries = trash.entries
+        let catalog = catalog
+        loadTask = Task { [weak self] in
+#if DEBUG
+            if let count = Self.debugSeedCount { await catalog.seedSynthetic(count: count) }
+#endif
+            let started = Date()
+            let albums = await catalog.load()
+            guard let self else { return }
+            self.albums = albums
+            self.isLoaded = true
+            print(String(format: "[Closure] loaded %d tracks in %d albums in %.0f ms",
+                         albums.reduce(0) { $0 + $1.tracks.count }, albums.count, Date().timeIntervalSince(started) * 1000))
+        }
     }
 
     // MARK: - Import
@@ -119,77 +132,49 @@ final class LibraryStore {
         FileImporter.kind(of: url) == .audio
     }
 
-    // MARK: - Scan and index
+    // MARK: - Scan
 
-    /// Reconciles the index with the files on disk. Unchanged files keep their
-    /// cached metadata; new or changed files are read again.
+    /// Brings the library in line with the files on disk, away from the main thread.
+    /// Albums update about once a second while new files are read. A request that
+    /// arrives during a scan runs once more when the scan ends.
     func rescan() async {
-        let root = Self.libraryFolder
-        let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
-        var found: [(id: String, url: URL, size: Int64, modified: Date)] = []
-        let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys)
-        while let file = enumerator?.nextObject() as? URL {
-            guard Self.isAudio(file),
-                  let values = try? file.resourceValues(forKeys: Set(keys)),
-                  values.isRegularFile == true else { continue }
-            let id = String(file.standardizedFileURL.path.dropFirst(root.standardizedFileURL.path.count + 1))
-            found.append((id, file, Int64(values.fileSize ?? 0), values.contentModificationDate ?? .distantPast))
+        await loadTask?.value
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ClosureNoScan") { return }
+#endif
+        if isScanning {
+            rescanRequested = true
+            return
         }
-
-        var updated: [String: Track] = [:]
-        for item in found {
-            if let cached = tracksByID[item.id], cached.fileSize == item.size, cached.modified == item.modified {
-                updated[item.id] = cached
-            } else {
-                updated[item.id] = await Self.readTrack(id: item.id, url: item.url, size: item.size, modified: item.modified)
+        isScanning = true
+        defer { isScanning = false }
+        repeat {
+            rescanRequested = false
+            let started = Date()
+            let albums = await catalog.scan(root: Self.libraryFolder) { [weak self] progress in
+                await self?.apply(progress)
             }
-        }
-
-        tracksByID = updated
-        saveIndex()
-        rebuildAlbums()
-        await ArtworkStore.shared.forgetMisses()
+            self.albums = albums
+            print(String(format: "[Closure] scan finished in %.0f ms, %d files read", Date().timeIntervalSince(started) * 1000, scanProgress?.total ?? 0))
+            scanProgress = nil
+            await ArtworkStore.shared.forgetMisses()
+        } while rescanRequested
     }
 
-    private static func readTrack(id: String, url: URL, size: Int64, modified: Date) async -> Track {
-        let info = CLSEngine.probe(url.path)
-        var items: [TagItem] = []
-        if let metadata = try? await AVURLAsset(url: url).load(.metadata) {
-            for item in metadata {
-                items.append(TagItem(identifier: item.identifier?.rawValue ?? "",
-                                     commonKey: item.commonKey?.rawValue,
-                                     string: try? await item.load(.stringValue),
-                                     number: (try? await item.load(.numberValue))?.intValue,
-                                     data: try? await item.load(.dataValue)))
-            }
-        }
-        let tags = TagParser.parse(items)
-        let fileName = url.deletingPathExtension().lastPathComponent
-        let parentName = url.deletingLastPathComponent().lastPathComponent
-        // Without a disc tag, a "CD2" folder still says which disc this is.
-        let discFromFolder = LibraryGrouping.discNumber(fromFolderName: parentName)
-        let albumFolderName = discFromFolder != nil ? url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent : parentName
-
-        return Track(id: id,
-                     title: tags.title ?? fileName,
-                     artist: tags.artist ?? "",
-                     album: tags.album ?? albumFolderName,
-                     // "01 Title.flac" style names when the tag is missing.
-                     trackNumber: tags.trackNumber ?? Int(url.lastPathComponent.prefix { $0.isNumber }) ?? 0,
-                     duration: info.durationSeconds,
-                     codec: info.ok ? info.codec : "Unsupported",
-                     sampleRate: info.sampleRate, bitDepth: info.bitDepth, fileSize: size, modified: modified,
-                     year: tags.year,
-                     albumArtist: tags.albumArtist,
-                     discNumber: tags.discNumber ?? discFromFolder,
-                     composer: tags.composer,
-                     genre: tags.genre,
-                     isCompilation: tags.isCompilation)
+    private func apply(_ progress: LibraryCatalog.Progress) {
+        scanProgress = (progress.done, progress.total)
+        if let albums = progress.albums { self.albums = albums }
     }
 
-    private func rebuildAlbums() {
-        albums = LibraryGrouping.albums(from: Array(tracksByID.values))
+#if DEBUG
+    /// -ClosureSeed <n>: add n synthetic rows before loading (with -ClosureNoScan,
+    /// so the scan does not remove them again). For load-time measurements.
+    private static var debugSeedCount: Int? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flag = arguments.firstIndex(of: "-ClosureSeed"), flag + 1 < arguments.count else { return nil }
+        return Int(arguments[flag + 1])
     }
+#endif
 
     // MARK: - Storage
 
@@ -202,24 +187,5 @@ final class LibraryStore {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try? folder.setResourceValues(values)
-    }
-
-    private struct IndexFile: Codable {
-        var version: Int
-        var tracks: [Track]
-    }
-
-    /// An index from an older version (or none) is ignored, so the next scan reads every file.
-    private func loadIndex() {
-        guard let data = try? Data(contentsOf: Self.indexFile),
-              let index = try? JSONDecoder().decode(IndexFile.self, from: data),
-              index.version == Self.indexVersion else { return }
-        tracksByID = Dictionary(uniqueKeysWithValues: index.tracks.map { ($0.id, $0) })
-    }
-
-    private func saveIndex() {
-        let index = IndexFile(version: Self.indexVersion, tracks: Array(tracksByID.values))
-        guard let data = try? JSONEncoder().encode(index) else { return }
-        try? data.write(to: Self.indexFile, options: .atomic)
     }
 }

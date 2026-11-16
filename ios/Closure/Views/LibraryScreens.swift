@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EmptyLibraryView: View {
     let isImporting: Bool
+    var progress: (done: Int, total: Int)?
     let onImport: () -> Void
     let onFinderHelp: () -> Void
 
@@ -31,6 +32,10 @@ struct EmptyLibraryView: View {
                 .font(Theme.serif(36))
                 .foregroundStyle(Theme.ink)
                 .padding(.top, 56)
+            if let progress, progress.total > 0 {
+                MetaText("Reading \(progress.done) / \(progress.total)", size: 10.5)
+                    .padding(.top, 10)
+            }
             Text("Import music from the Files app, or copy album folders to Closure in Finder over a cable.")
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.muted)
