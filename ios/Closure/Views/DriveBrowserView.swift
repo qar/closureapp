@@ -20,8 +20,11 @@ final class DriveSelection {
 /// Google Drive inside the app: browse My Drive, shared drives and files shared with
 /// you; pick files or whole folders; import them.
 struct DriveBrowserView: View {
+    /// Called after Import starts the downloads, so the library can show them.
+    var onImport: () -> Void = {}
     @Environment(GoogleDriveAccount.self) private var account
     @Environment(LibraryStore.self) private var library
+    @Environment(DriveDownloadManager.self) private var downloads
     @Environment(\.dismiss) private var dismiss
     @State private var selection = DriveSelection()
     @State private var path = NavigationPath()
@@ -61,8 +64,10 @@ struct DriveBrowserView: View {
             Button("Import") {
                 let items = selection.files
                 let client = account.client()
+                let free = library.availableSpace()
+                Task { await downloads.start(items, client: client, availableSpace: free) }
+                onImport()
                 dismiss()
-                Task { await library.importFromDrive(items, client: client) }
             }
             .buttonStyle(PillButtonStyle())
         }

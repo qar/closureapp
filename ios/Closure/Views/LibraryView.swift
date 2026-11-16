@@ -26,6 +26,9 @@ struct LibraryView: View {
     @State private var showingSearch = false
     @State private var showingFinderHelp = false
     @State private var showingDrive = false
+    @State private var showingDownloads = false
+    @State private var downloadsAfterDrive = false
+    @Environment(DriveDownloadManager.self) private var downloads
     @Environment(GoogleDriveAccount.self) private var driveAccount
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 #if DEBUG
@@ -41,7 +44,7 @@ struct LibraryView: View {
                     Theme.paper
                 } else if library.albums.isEmpty {
                     EmptyLibraryView(isImporting: library.isImporting || library.scanProgress != nil,
-                                     progress: library.downloadProgress ?? library.scanProgress,
+                                     progress: library.scanProgress,
                                      onImport: { showingImporter = true },
                                      onGoogleDrive: openGoogleDrive,
                                      onFinderHelp: { showingFinderHelp = true })
@@ -69,7 +72,12 @@ struct LibraryView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MiniPlayer { showingNowPlaying = true }
+            VStack(spacing: 0) {
+                if DownloadStrip.isVisible(downloads) {
+                    DownloadStrip { showingDownloads = true }
+                }
+                MiniPlayer { showingNowPlaying = true }
+            }
         }
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: [.audio, .folder],
@@ -89,8 +97,18 @@ struct LibraryView: View {
             }
         }
         .sheet(isPresented: $showingFinderHelp) { FinderHelpView() }
-        .sheet(isPresented: $showingDrive) {
-            DriveBrowserView()
+        .sheet(isPresented: $showingDrive, onDismiss: {
+            if downloadsAfterDrive {
+                downloadsAfterDrive = false
+                showingDownloads = true
+            }
+        }) {
+            DriveBrowserView(onImport: { downloadsAfterDrive = true })
+                .presentationBackground(Theme.paper)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingDownloads) {
+            DownloadsView()
                 .presentationBackground(Theme.paper)
                 .presentationDragIndicator(.visible)
         }
@@ -204,11 +222,8 @@ struct LibraryView: View {
         }
     }
 
-    /// "Downloading 3 / 12" or "Reading 120 / 3000" while work is in progress.
+    /// "Reading 120 / 3000" while new files are read.
     private var scanText: String? {
-        if let progress = library.downloadProgress, progress.total > 0 {
-            return "Downloading \(progress.done) / \(progress.total)"
-        }
         guard let progress = library.scanProgress, progress.total > 0 else { return nil }
         return "Reading \(progress.done) / \(progress.total)"
     }
@@ -334,6 +349,7 @@ struct LibraryView: View {
         case "folders": tab = .folders
         case "search": showingSearch = true
         case "drive": showingDrive = true
+        case "downloads": showingDownloads = true
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.
             Task {

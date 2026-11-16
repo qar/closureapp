@@ -16,8 +16,6 @@ final class LibraryStore {
     /// Files read so far and files to read, while a scan reads new or changed files.
     private(set) var scanProgress: (done: Int, total: Int)?
     private(set) var isImporting = false
-    /// Files downloaded so far and files to download, during a Google Drive import.
-    private(set) var downloadProgress: (done: Int, total: Int)?
     /// A Google Drive problem to show the user, until dismissed.
     var driveError: String?
     /// The result of the last import, until the user dismisses it.
@@ -110,89 +108,18 @@ final class LibraryStore {
 
     // MARK: - Google Drive
 
-    /// Downloads the files and folders picked in the Drive browser, then imports them
-    /// through the verified copy path. Folders keep their structure.
-    func importFromDrive(_ items: [GoogleDrive.File], client: GoogleDriveClient) async {
-        guard !items.isEmpty else { return }
-        let downloadRoot = FileManager.default.temporaryDirectory.appendingPathComponent("GoogleDrive-\(UUID().uuidString)", isDirectory: true)
+    /// Free space for imports (overridable in debug builds).
+    func availableSpace() -> Int64? { importer.availableSpace() }
+
+    /// Imports files the Drive download manager finished, through the verified copy
+    /// path. Folders keep their structure.
+    func importDownloaded(_ sources: [URL]) async -> FileImporter.Report {
         isImporting = true
-        downloadProgress = (0, 0)
-        defer {
-            try? FileManager.default.removeItem(at: downloadRoot)
-            downloadProgress = nil
-            isImporting = false
-        }
-        do {
-            var plan: [(file: GoogleDrive.File, destination: URL)] = []
-            var sources: [URL] = []
-            for item in items {
-                if item.isFolder {
-                    let folder = downloadRoot.appendingPathComponent(Self.safeName(item.name), isDirectory: true)
-                    try await collect(folder: item, into: folder, client: client, plan: &plan)
-                    sources.append(folder)
-                } else if Self.isImportable(item.name) {
-                    let destination = downloadRoot.appendingPathComponent("files", isDirectory: true).appendingPathComponent(Self.safeName(item.name))
-                    plan.append((item, destination))
-                    sources.append(destination)
-                }
-            }
-            guard !plan.isEmpty else {
-                importSummary = ImportSummary(source: "Google Drive", report: FileImporter.Report())
-                return
-            }
-
-            // The download and the verified copy both need room before the temporary files go.
-            let needed = plan.reduce(Int64(0)) { $0 + $1.file.byteCount }
-            if let free = importer.availableSpace(), needed * 2 + FileImporter.spaceReserve > free {
-                var report = FileImporter.Report()
-                report.spaceShortfall = needed * 2 + FileImporter.spaceReserve - free
-                importSummary = ImportSummary(source: "Google Drive", report: report)
-                return
-            }
-
-            let started = Date()
-            downloadProgress = (0, plan.count)
-            for (index, entry) in plan.enumerated() {
-                try FileManager.default.createDirectory(at: entry.destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try await client.download(entry.file, to: entry.destination)
-                downloadProgress = (index + 1, plan.count)
-            }
-            print(String(format: "[Closure][Drive] downloaded %d file(s), %lld bytes in %.1f s", plan.count, needed, Date().timeIntervalSince(started)))
-
-            let importer = importer
-            let existing = sources.filter { FileManager.default.fileExists(atPath: $0.path) }
-            let report = await Task.detached(priority: .userInitiated) { importer.importCopies(existing) }.value
-            if report.audioFiles > 0 || report.companionFiles > 0 { await rescan() }
-            importSummary = ImportSummary(source: "Google Drive", report: report)
-        } catch {
-            print("[Closure][Drive] import failed: \(error)")
-            driveError = error.localizedDescription
-        }
-    }
-
-    /// Lists a Drive folder recursively and plans where each importable file goes.
-    private func collect(folder: GoogleDrive.File, into local: URL, client: GoogleDriveClient,
-                         plan: inout [(file: GoogleDrive.File, destination: URL)]) async throws {
-        let children = try await client.list(.folder(id: folder.id, name: folder.name))
-        for child in children {
-            if child.isFolder {
-                try await collect(folder: child, into: local.appendingPathComponent(Self.safeName(child.name), isDirectory: true),
-                                  client: client, plan: &plan)
-            } else if Self.isImportable(child.name) {
-                plan.append((child, local.appendingPathComponent(Self.safeName(child.name))))
-            }
-        }
-    }
-
-    private static func isImportable(_ name: String) -> Bool {
-        let kind = FileImporter.kind(of: URL(fileURLWithPath: name))
-        return kind == .audio || kind == .companion
-    }
-
-    /// Drive names may contain "/" or be empty; local file names may not.
-    private static func safeName(_ name: String) -> String {
-        let cleaned = name.replacingOccurrences(of: "/", with: "\u{2215}").trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? "Untitled" : cleaned
+        defer { isImporting = false }
+        let importer = importer
+        let report = await Task.detached(priority: .userInitiated) { importer.importCopies(sources) }.value
+        if report.audioFiles > 0 || report.companionFiles > 0 { await rescan() }
+        return report
     }
 
     // MARK: - Recently Deleted
