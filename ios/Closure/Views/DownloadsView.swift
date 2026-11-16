@@ -114,13 +114,18 @@ struct DownloadsView: View {
         if job.isActive { return "\(job.finishedCount) of \(total) file\(total == 1 ? "" : "s")" }
         if job.failedCount > 0 { return "\(job.failedCount) of \(total) file\(total == 1 ? "" : "s") failed" }
         let added = downloads.importedAudioCount
-        return added > 0 ? "\(added) track\(added == 1 ? "" : "s") added to the library" : "Done"
+        if added > 0 { return "\(added) track\(added == 1 ? "" : "s") added to the library" }
+        return job.alreadyInLibraryCount > 0 ? "Already in the library" : "Done"
     }
 
     private func detail(_ job: DownloadJob) -> String {
         let received = ByteCountFormatter.string(fromByteCount: job.receivedBytes, countStyle: .file)
         let total = ByteCountFormatter.string(fromByteCount: job.totalBytes, countStyle: .file)
-        guard job.isActive else { return "\(total) downloaded" }
+        let skipped = job.alreadyInLibraryCount
+        let skippedText = skipped > 0 ? "\(skipped) already in the library" : nil
+        guard job.isActive else {
+            return skippedText ?? "\(total) downloaded"
+        }
         var text = "\(received) of \(total)"
         let left = job.totalBytes - job.receivedBytes
         if downloads.bytesPerSecond > 0, left > 0 {
@@ -231,6 +236,7 @@ private struct DownloadRow: View {
             return "\(ByteCountFormatter.string(fromByteCount: item.received, countStyle: .file)) of \(size)"
         case .done: return "Downloaded · \(size)"
         case .imported: return "Added · \(size)"
+        case .alreadyInLibrary: return "Already in the library · \(size)"
         case let .failed(message): return "Failed · \(message)"
         }
     }
@@ -249,7 +255,7 @@ private struct DownloadRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Retry \(item.name)")
-        case .imported, .done:
+        case .imported, .done, .alreadyInLibrary:
             Image(systemName: "checkmark")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.muted)

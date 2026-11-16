@@ -168,6 +168,25 @@ final class DriveDownloadManagerTests: XCTestCase {
         XCTAssertEqual(DownloadMockProtocol.mediaRequests(for: "zip"), 0)
     }
 
+    func testContentAlreadyInTheLibraryIsNotDownloaded() async {
+        DownloadMockProtocol.reply = { _ in .ok(Data("FLAC".utf8)) }
+        let manager = makeManager()
+        var asked: [String] = []
+        manager.filesAlreadyInLibrary = { files in
+            asked = files.map(\.sha256)
+            return Set(files.filter { $0.sha256 == "aa11" }.map(\.id))
+        }
+        let known = GoogleDrive.File(id: "k", name: "renamed.flac", mimeType: "audio/flac", size: "4", sha256Checksum: "AA11")
+        let new = GoogleDrive.File(id: "n", name: "02.flac", mimeType: "audio/flac", size: "4", sha256Checksum: "bb22")
+        await manager.start([known, new], client: client, availableSpace: nil)
+        await waitUntil { manager.job?.isActive == false && !self.imported.isEmpty }
+
+        XCTAssertEqual(asked.sorted(), ["aa11", "bb22"], "Drive's hex is compared in lowercase")
+        XCTAssertEqual(manager.job?.items.first { $0.id == "k" }?.state, .alreadyInLibrary)
+        XCTAssertEqual(DownloadMockProtocol.mediaRequests(for: "k"), 0)
+        XCTAssertEqual(manager.job?.items.first { $0.id == "n" }?.state, .imported)
+    }
+
     func testNotEnoughSpaceStartsNothing() async {
         DownloadMockProtocol.reply = { _ in .ok(Data("FLAC".utf8)) }
         let manager = makeManager()

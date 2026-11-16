@@ -340,6 +340,20 @@ features:
       - 单个文件失败不影响其他文件；失败的文件可以单独重试或全部重试；整个专辑下完（或只剩失败文件）后才导入，避免专辑分几次进资料库。
     notes: 使用受限权限 drive.readonly。测试状态下最多 100 个测试用户可用（会显示未验证提示，刷新令牌约 7 天过期）。正式发布前必须通过 Google 受限权限审核（约 6 周、每年复审，是否需要付费的 CASA 安全评估待确认）。审核被拒时退回 drive.file + Google 选择器（代码已保留）和“文件”App 导入。Google 授权页名称暂用 QAR Music，因为 Google 拒绝 “Closure” 这个名字。
 
+  - id: library.dedupe
+    title: 按内容去重：导入时跳过已有文件，清理已有的重复副本
+    category: library
+    priority: P1
+    platforms: { ios: done }
+    why: [用户要求（2026-11-16）；同一张专辑从“文件”App 和 Google Drive 各导入一次后出现三份]
+    acceptance:
+      - 只按内容（SHA-256）判断是否重复，不看文件名、标签或时长。先比大小，大小相同才计算哈希；哈希按路径、大小、修改时间缓存。
+      - 导入时跳过资料库里已有相同内容的音频文件；整张专辑都已存在时，连封面等附属文件一起跳过。导入结果显示“已在资料库中”的数量。
+      - Google Drive 用 Drive 提供的 SHA-256 在下载前比对，已有的文件不下载；Drive 没有提供哈希的文件在下载后由导入器比对。
+      - Finder 拖进 Documents 的重复文件从 Documents 移除（资料库里有完全相同的内容）。
+      - 资料库有重复时显示“Duplicates”入口。每组默认保留专辑文件夹里、文件名最短的一份，用户可以改选；其余移到 Recently Deleted，30 天内可恢复。
+    notes: 不合并内容不同的“同一首歌”（不同格式、不同版本）。以后可以按标签和时长提示“可能重复”，由用户决定。
+
   - id: library.finder-transfer
     title: 通过 Finder 用数据线批量传歌
     category: library

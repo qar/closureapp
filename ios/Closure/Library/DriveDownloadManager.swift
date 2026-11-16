@@ -35,6 +35,8 @@ final class DriveDownloadManager: NSObject {
 
     /// Copies finished files into the library.
     @ObservationIgnored var importFiles: (([URL]) async -> FileImporter.Report)?
+    /// IDs of the given files (id, size, SHA-256) whose content the library already has.
+    @ObservationIgnored var filesAlreadyInLibrary: (([(id: String, size: Int64, sha256: String)]) async -> Set<String>)?
 
     @ObservationIgnored private let root: URL
     @ObservationIgnored private let accessToken: () async throws -> String
@@ -123,8 +125,18 @@ final class DriveDownloadManager: NSObject {
             return
         }
 
+        // Content the library already has is not downloaded. Drive reports a SHA-256 for
+        // most files; the rest are checked by the importer after the download.
+        let checkable = items.compactMap { item in item.sha256.map { (id: item.id, size: item.size, sha256: $0) } }
+        if !checkable.isEmpty, let filesAlreadyInLibrary {
+            let present = await filesAlreadyInLibrary(checkable)
+            for index in items.indices where present.contains(items[index].id) {
+                items[index].state = .alreadyInLibrary
+            }
+        }
+
         // The download and the verified copy both need room before the downloaded files go.
-        let needed = items.reduce(Int64(0)) { $0 + $1.size }
+        let needed = items.filter { $0.state == .queued }.reduce(Int64(0)) { $0 + $1.size }
         if let free = availableSpace, needed * 2 + FileImporter.spaceReserve > free {
             let short = needed * 2 + FileImporter.spaceReserve - free
             problem = "Not enough space on this iPhone. Free up \(ByteCountFormatter.string(fromByteCount: short, countStyle: .file)) and try again."
@@ -144,7 +156,7 @@ final class DriveDownloadManager: NSObject {
     }
 
     private func item(for file: GoogleDrive.File, at path: String) -> DownloadItem {
-        DownloadItem(id: file.id, name: file.name, size: file.byteCount, relativePath: path)
+        DownloadItem(id: file.id, name: file.name, size: file.byteCount, relativePath: path, sha256: file.sha256Checksum?.lowercased())
     }
 
     /// Lists a folder recursively. A listing that times out is tried again.
@@ -413,6 +425,7 @@ final class DriveDownloadManager: NSObject {
             try? FileManager.default.removeItem(at: filesRoot.appendingPathComponent(item.relativePath))
             job?.update(item.id) { $0.state = .imported }
         }
+        job?.markDuplicates(report.duplicates)
         bytesPerSecond = 0
         save(force: true)
         if job?.failedCount == 0 {
@@ -426,7 +439,7 @@ final class DriveDownloadManager: NSObject {
     // MARK: - Saving
 
     private func save(force: Bool) {
-        guard force || Date().timeIntervalSince(lastSave) > 2 else { return }
+        guard !isDemo, force || Date().timeIntervalSince(lastSave) > 2 else { return }
         lastSave = Date()
         guard let job else { return }
         if let data = try? JSONEncoder().encode(job) { try? data.write(to: jobURL, options: .atomic) }

@@ -16,6 +16,9 @@ import Foundation
 /// interrupted after verification finishes on the next launch; anything unverified is
 /// discarded (the source is untouched). Before copying, the total size is checked
 /// against the free space.
+///
+/// With a content index, a file whose exact content (SHA-256) is already in the library
+/// is skipped and reported as a duplicate. Names are never compared.
 struct FileImporter {
     enum Mode {
         /// From the Files app: the source belongs to the user and is never changed.
@@ -40,12 +43,15 @@ struct FileImporter {
         var leftInPlace: [String] = []
         /// Bytes missing when an import did not start for lack of space.
         var spaceShortfall: Int64?
+        /// Audio files skipped because the library already has the same content.
+        var duplicates: [String] = []
 
         mutating func merge(_ other: Report) {
             audioFiles += other.audioFiles
             companionFiles += other.companionFiles
             failed += other.failed
             leftInPlace += other.leftInPlace
+            duplicates += other.duplicates
             if let shortfall = other.spaceShortfall { spaceShortfall = (spaceShortfall ?? 0) + shortfall }
         }
     }
@@ -68,6 +74,8 @@ struct FileImporter {
     var availableSpace: () -> Int64?
     /// Test hook: called after a file is staged and before it is verified.
     var afterStaging: ((URL) -> Void)?
+    /// Finds content already in the library. Without it, nothing is treated as a duplicate.
+    var contentIndex: ContentIndex?
     private let fileManager = FileManager.default
 
     init(libraryRoot: URL, stagingRoot: URL? = nil, availableSpace: (() -> Int64?)? = nil) {
@@ -104,6 +112,8 @@ struct FileImporter {
             report.spaceShortfall = needed + Self.spaceReserve - free
             return report
         }
+        contentIndex?.refresh()
+        defer { contentIndex?.save() }
         var report = Report()
         for source in sources { report.merge(importItem(source, mode: .copy)) }
         return report
@@ -111,6 +121,8 @@ struct FileImporter {
 
     /// Imports everything in the Documents inbox. Items Closure cannot use stay there.
     func importInbox(_ inbox: URL) -> Report {
+        contentIndex?.refresh()
+        defer { contentIndex?.save() }
         var report = Report()
         for item in children(of: inbox) {
             if item.lastPathComponent == Self.systemInboxName, isDirectory(item) {
@@ -159,14 +171,34 @@ struct FileImporter {
             return report
         }
 
+        // Audio already in the library (same content) is skipped. When every track is,
+        // the whole folder is: its covers and lyrics are already there too.
+        let audio = files.filter { Self.kind(of: $0) == .audio }
+        let duplicateAudio = Set(audio.filter { isInLibrary($0) })
+        if !audio.isEmpty, duplicateAudio.count == audio.count {
+            report.duplicates = audio.map { folder.lastPathComponent + "/" + relativePath(of: $0, in: folder) }
+            if mode == .move { for file in audio { try? fileManager.removeItem(at: file) } }
+            return report
+        }
+
         var staged: [(source: URL, relative: String)] = []
         for file in files {
             let kind = Self.kind(of: file)
+            if duplicateAudio.contains(file) {
+                report.duplicates.append(folder.lastPathComponent + "/" + relativePath(of: file, in: folder))
+                if mode == .move { try? fileManager.removeItem(at: file) }
+                continue
+            }
             switch kind {
             case .audio, .companion:
                 let relative = folder.lastPathComponent + "/" + relativePath(of: file, in: folder)
+                // A cover or lyrics file identical to one already beside it is not copied again.
+                if kind == .companion, isAlreadyBeside(file, at: relative) {
+                    if mode == .move { try? fileManager.removeItem(at: file) }
+                    continue
+                }
                 if mode == .move {
-                    if move(file, to: libraryRoot.appendingPathComponent(relative)) {
+                    if move(file, to: libraryRoot.appendingPathComponent(relative)) != nil {
                         if kind == .audio { report.audioFiles += 1 } else { report.companionFiles += 1 }
                     } else {
                         report.failed.append(relative)
@@ -194,12 +226,15 @@ struct FileImporter {
     private func importLooseFile(_ file: URL, mode: Mode) -> Report {
         var report = Report()
         switch Self.kind(of: file) {
+        case .audio where isInLibrary(file):
+            report.duplicates.append(file.lastPathComponent)
+            if mode == .move { try? fileManager.removeItem(at: file) }
         case .audio:
             let relative = Self.looseFilesFolder + "/" + file.lastPathComponent
             if mode == .copy {
                 return copyThroughStaging([(file, relative)])
             }
-            if move(file, to: libraryRoot.appendingPathComponent(relative)) {
+            if move(file, to: libraryRoot.appendingPathComponent(relative)) != nil {
                 report.audioFiles += 1
             } else {
                 report.failed.append(file.lastPathComponent)
@@ -253,7 +288,7 @@ struct FileImporter {
         for relative in manifest.files {
             let staged = batch.appendingPathComponent(relative)
             guard fileManager.fileExists(atPath: staged.path) else { continue } // already moved before an interruption
-            if move(staged, to: libraryRoot.appendingPathComponent(relative)) {
+            if move(staged, to: libraryRoot.appendingPathComponent(relative)) != nil {
                 if Self.kind(of: staged) == .audio { report.audioFiles += 1 } else { report.companionFiles += 1 }
             } else {
                 report.failed.append(relative)
@@ -319,15 +354,35 @@ struct FileImporter {
 
     /// Same-volume move: a rename, so the file is never in two half states. The source
     /// is gone only when the move succeeded.
-    private func move(_ source: URL, to destination: URL) -> Bool {
+    /// Moves a file into place, renaming it when the name is taken. Returns where it went.
+    @discardableResult
+    private func move(_ source: URL, to destination: URL) -> URL? {
         let target = uniqueURL(for: destination)
         do {
             try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try fileManager.moveItem(at: source, to: target)
-            return true
         } catch {
-            return false
+            return nil
         }
+        // Later files in the same import are compared with this one too.
+        if let index = contentIndex, target.path.hasPrefix(libraryRoot.path + "/") {
+            index.noteAdded(String(target.path.dropFirst(libraryRoot.path.count + 1)))
+        }
+        return target
+    }
+
+    // MARK: - Duplicates
+
+    private func isInLibrary(_ file: URL) -> Bool {
+        guard let contentIndex else { return false }
+        return !contentIndex.libraryFiles(sameAs: file).paths.isEmpty
+    }
+
+    /// True when the folder `relative` goes to already holds a file with this content.
+    private func isAlreadyBeside(_ file: URL, at relative: String) -> Bool {
+        guard let contentIndex else { return false }
+        let folder = (relative as NSString).deletingLastPathComponent
+        return contentIndex.libraryFiles(sameAs: file).paths.contains { ($0 as NSString).deletingLastPathComponent == folder }
     }
 
     private func uniqueURL(for url: URL) -> URL {

@@ -32,6 +32,9 @@ struct ClosureApp: App {
         downloads.importFiles = { [weak library] sources in
             await library?.importDownloaded(sources) ?? FileImporter.Report()
         }
+        downloads.filesAlreadyInLibrary = { [weak library] files in
+            await library?.filesAlreadyInLibrary(files) ?? []
+        }
 #if DEBUG
         DriveDownloadManager.loadDemoIfRequested(downloads)
 #endif

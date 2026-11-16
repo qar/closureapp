@@ -7,6 +7,7 @@ enum LibraryRoute: Hashable {
     case artist(String)
     case folder(String)
     case recentlyDeleted
+    case duplicates
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
@@ -54,6 +55,7 @@ struct LibraryView: View {
                             header
                             tabBar
                             content
+                            duplicatesLink
                             recentlyDeletedLink
                         }
                         .padding(.bottom, 32)
@@ -68,6 +70,7 @@ struct LibraryView: View {
                 case let .artist(name): ArtistView(artist: name)
                 case let .folder(folder): FolderView(folder: folder)
                 case .recentlyDeleted: RecentlyDeletedView()
+                case .duplicates: DuplicatesView()
                 }
             }
         }
@@ -194,6 +197,34 @@ struct LibraryView: View {
         }
     }
 
+    /// Shown only when the library has files with identical content.
+    @ViewBuilder
+    private var duplicatesLink: some View {
+        let extra = library.duplicateGroups.reduce(0) { $0 + $1.count - 1 }
+        if extra > 0 {
+            NavigationLink(value: LibraryRoute.duplicates) {
+                VStack(spacing: 0) {
+                    Hairline()
+                    HStack {
+                        Text("Duplicates")
+                            .font(.system(size: 17))
+                            .foregroundStyle(Theme.ink)
+                        Spacer()
+                        MetaText("\(extra) extra", size: 10.5)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    .padding(.vertical, 16)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, Theme.horizontalMargin)
+            .padding(.top, 40)
+        }
+    }
+
     /// Shown only when something is in Recently Deleted.
     @ViewBuilder
     private var recentlyDeletedLink: some View {
@@ -218,7 +249,7 @@ struct LibraryView: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, Theme.horizontalMargin)
-            .padding(.top, 40)
+            .padding(.top, library.duplicateGroups.isEmpty ? 40 : 0)
         }
     }
 
@@ -350,6 +381,7 @@ struct LibraryView: View {
         case "search": showingSearch = true
         case "drive": showingDrive = true
         case "downloads": showingDownloads = true
+        case "duplicates": path.append(LibraryRoute.duplicates)
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.
             Task {

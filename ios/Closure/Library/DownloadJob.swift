@@ -8,6 +8,9 @@ struct DownloadItem: Codable, Identifiable, Equatable {
         case done
         case failed(String)
         case imported
+        /// The library already has a file with the same content (SHA-256); not downloaded
+        /// or not added again.
+        case alreadyInLibrary
     }
 
     /// Drive file ID.
@@ -18,13 +21,15 @@ struct DownloadItem: Codable, Identifiable, Equatable {
     /// Where the file goes inside the job folder, e.g. "Low Light/CD1/01.flac". Top-level
     /// "files/" holds single picked files.
     let relativePath: String
+    /// SHA-256 reported by Drive, when it reports one.
+    var sha256: String?
     var state: State = .queued
     var received: Int64 = 0
     var attempts = 0
 
     var isFinished: Bool {
         switch state {
-        case .done, .imported: return true
+        case .done, .imported, .alreadyInLibrary: return true
         default: return false
         }
     }
@@ -52,6 +57,7 @@ struct DownloadJob: Codable, Equatable {
     }
 
     var finishedCount: Int { items.filter(\.isFinished).count }
+    var alreadyInLibraryCount: Int { items.filter { $0.state == .alreadyInLibrary }.count }
     var failedCount: Int { items.filter(\.isFailed).count }
     var activeCount: Int { items.filter { $0.state == .queued || $0.state == .downloading }.count }
     var isActive: Bool { activeCount > 0 }
@@ -84,6 +90,32 @@ struct DownloadJob: Codable, Equatable {
             }
         }
         return folders.map { root.appendingPathComponent($0, isDirectory: true) } + files
+    }
+
+    /// Marks files the importer skipped as already in the library. `duplicates` are the
+    /// importer's paths: "Album/CD1/01.flac" for folders, the bare name for single files.
+    /// A folder whose every track was a duplicate was skipped whole, covers included.
+    mutating func markDuplicates(_ duplicates: [String]) {
+        guard !duplicates.isEmpty else { return }
+        let skipped = Set(duplicates)
+        for index in items.indices {
+            let path = items[index].relativePath
+            let loose = DownloadJob.looseFilesFolder + "/"
+            if skipped.contains(path) || (path.hasPrefix(loose) && skipped.contains(String(path.dropFirst(loose.count)))) {
+                items[index].state = .alreadyInLibrary
+            }
+        }
+        var tops: [String: [Int]] = [:]
+        for index in items.indices {
+            guard let top = items[index].relativePath.split(separator: "/").first.map(String.init),
+                  top != DownloadJob.looseFilesFolder else { continue }
+            tops[top, default: []].append(index)
+        }
+        for (_, indices) in tops {
+            let audio = indices.filter { FileImporter.kind(of: URL(fileURLWithPath: items[$0].name)) == .audio }
+            guard !audio.isEmpty, audio.allSatisfy({ items[$0].state == .alreadyInLibrary }) else { continue }
+            for index in indices where items[index].state == .imported { items[index].state = .alreadyInLibrary }
+        }
     }
 
     mutating func update(_ id: String, _ change: (inout DownloadItem) -> Void) {

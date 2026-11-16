@@ -147,6 +147,12 @@ struct ImportResultView: View {
                 Hairline()
                 row("Tracks", report.audioFiles)
                 row("Covers & lyrics", report.companionFiles)
+                if !report.duplicates.isEmpty {
+                    row("Already in library", report.duplicates.count,
+                        note: names(report.duplicates, reason: summary.source == "Finder"
+                                    ? "same content as a file in the library, removed from Documents"
+                                    : "same content as a file in the library, not copied again"))
+                }
                 if summary.source == "Finder" {
                     row("Left in Documents", report.leftInPlace.count,
                         note: names(report.leftInPlace, reason: "not a music file"))

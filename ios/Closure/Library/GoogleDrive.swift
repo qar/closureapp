@@ -135,13 +135,18 @@ enum GoogleDrive {
         let mimeType: String
         let size: String?
         let shortcutDetails: Shortcut?
+        /// Lowercase hex SHA-256 of the content. Drive omits it for some files (shortcuts,
+        /// Google Docs).
+        let sha256Checksum: String?
 
-        init(id: String, name: String, mimeType: String, size: String? = nil, shortcutDetails: Shortcut? = nil) {
+        init(id: String, name: String, mimeType: String, size: String? = nil, shortcutDetails: Shortcut? = nil,
+             sha256Checksum: String? = nil) {
             self.id = id
             self.name = name
             self.mimeType = mimeType
             self.size = size
             self.shortcutDetails = shortcutDetails
+            self.sha256Checksum = sha256Checksum
         }
 
         var isFolder: Bool { mimeType == GoogleDrive.folderMimeType }
@@ -209,7 +214,7 @@ enum GoogleDrive {
     /// files.list parameters for a location. Folders first, natural name order.
     static func listQuery(for location: Location) -> [URLQueryItem] {
         var items: [URLQueryItem] = [
-            .init(name: "fields", value: "nextPageToken,files(id,name,mimeType,size,shortcutDetails)"),
+            .init(name: "fields", value: "nextPageToken,files(id,name,mimeType,size,shortcutDetails,sha256Checksum)"),
             .init(name: "orderBy", value: "folder,name_natural"),
             .init(name: "pageSize", value: "1000"),
             .init(name: "supportsAllDrives", value: "true"),

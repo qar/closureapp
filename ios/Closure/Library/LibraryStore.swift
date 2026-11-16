@@ -22,6 +22,8 @@ final class LibraryStore {
     var importSummary: ImportSummary?
     /// Recently Deleted, newest first.
     private(set) var trashEntries: [TrashStore.Entry] = []
+    /// Library audio files with identical content (SHA-256), one group per content.
+    private(set) var duplicateGroups: [[String]] = []
 
     nonisolated static var libraryFolder: URL { LibraryPaths.musicFolder }
 
@@ -37,6 +39,11 @@ final class LibraryStore {
     @ObservationIgnored private var isScanning = false
     @ObservationIgnored private var rescanRequested = false
     @ObservationIgnored private var importer = FileImporter(libraryRoot: LibraryStore.libraryFolder)
+    @ObservationIgnored private let contentIndex = ContentIndex(
+        libraryRoot: LibraryStore.libraryFolder,
+        cacheURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Library/content-hashes.json"))
+    @ObservationIgnored private var duplicateTask: Task<Void, Never>?
     @ObservationIgnored private let trash: TrashStore = {
         var folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Trash", isDirectory: true)
@@ -49,6 +56,7 @@ final class LibraryStore {
 
     init() {
         prepareFolders()
+        importer.contentIndex = contentIndex
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if let flag = arguments.firstIndex(of: "-ClosureFakeFreeSpace"), flag + 1 < arguments.count,
@@ -56,6 +64,12 @@ final class LibraryStore {
             importer.availableSpace = { bytes }
         }
 #endif
+        // The first Drive import downloaded into tmp/GoogleDrive-*; remove what it left.
+        let temporary = FileManager.default.temporaryDirectory
+        for item in (try? FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? []
+        where item.lastPathComponent.hasPrefix("GoogleDrive-") {
+            try? FileManager.default.removeItem(at: item)
+        }
         // Finish verified imports cut short last time; the next scan picks them up.
         importer.recoverStaging()
         trash.purgeExpired()
@@ -101,7 +115,7 @@ final class LibraryStore {
         let report = await Task.detached(priority: .userInitiated) { importer.importInbox(inbox) }.value
         // Files Closure does not use stay in Documents. Mention them only when
         // something else happened, so they do not produce a message on every launch.
-        guard report.audioFiles > 0 || report.companionFiles > 0 || !report.failed.isEmpty else { return }
+        guard report.audioFiles > 0 || report.companionFiles > 0 || !report.failed.isEmpty || !report.duplicates.isEmpty else { return }
         await rescan()
         importSummary = ImportSummary(source: "Finder", report: report)
     }
@@ -110,6 +124,16 @@ final class LibraryStore {
 
     /// Free space for imports (overridable in debug builds).
     func availableSpace() -> Int64? { importer.availableSpace() }
+
+    /// Which of these Drive files (id, size, SHA-256) the library already has.
+    func filesAlreadyInLibrary(_ files: [(id: String, size: Int64, sha256: String)]) async -> Set<String> {
+        let index = contentIndex
+        return await Task.detached(priority: .userInitiated) {
+            index.refresh()
+            defer { index.save() }
+            return Set(files.filter { !index.libraryFiles(size: $0.size, sha256: $0.sha256).isEmpty }.map(\.id))
+        }.value
+    }
 
     /// Imports files the Drive download manager finished, through the verified copy
     /// path. Folders keep their structure.
@@ -148,6 +172,22 @@ final class LibraryStore {
         trashEntries = trash.entries
     }
 
+    /// Moves extra copies to Recently Deleted. `paths` are library-relative.
+    func moveDuplicatesToTrash(_ paths: [String]) async {
+        let tracks = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for path in paths {
+            let track = tracks[path]
+            _ = try? trash.moveToTrash(relativePath: path, title: track?.title ?? (path as NSString).lastPathComponent,
+                                       artist: track?.artist ?? "", album: track?.album ?? "")
+        }
+        trashEntries = trash.entries
+        duplicateGroups = duplicateGroups.compactMap { group in
+            let left = group.filter { !paths.contains($0) }
+            return left.count > 1 ? left : nil
+        }
+        await rescan()
+    }
+
     func emptyTrash() {
         for entry in trash.entries { trash.deletePermanently(entry) }
         trashEntries = trash.entries
@@ -184,6 +224,24 @@ final class LibraryStore {
             scanProgress = nil
             await ArtworkStore.shared.forgetMisses()
         } while rescanRequested
+        findDuplicates()
+    }
+
+    /// Looks for identical files in the background. Only files of equal size are read.
+    private func findDuplicates() {
+        duplicateTask?.cancel()
+        let index = contentIndex
+        duplicateTask = Task { [weak self] in
+            let started = Date()
+            let groups = await Task.detached(priority: .utility) { () -> [[String]] in
+                index.refresh()
+                defer { index.save() }
+                return index.duplicateGroups()
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            self.duplicateGroups = groups
+            print(String(format: "[Closure] duplicate check: %d group(s) in %.0f ms", groups.count, Date().timeIntervalSince(started) * 1000))
+        }
     }
 
     private func apply(_ progress: LibraryCatalog.Progress) {
