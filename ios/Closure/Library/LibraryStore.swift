@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UIKit
 import Observation
 
 /// Prototype library. The app keeps its own copy of every file, in the folder
@@ -276,6 +278,54 @@ final class LibraryStore {
     func clearMissingFiles() {
         missingFiles = []
         FileProblems.save([], to: Self.missingListURL)
+    }
+
+    // MARK: - Album edits
+
+    /// The album's saved edits (empty when it has none).
+    func override(for albumID: String) async -> AlbumOverride {
+        await catalog.overrides[albumID] ?? AlbumOverride(albumKey: albumID)
+    }
+
+    /// Saves the user's album edits. `cover` is image data to use as the cover; nil
+    /// keeps the current one, unless `removeCover` is set. Files are never changed.
+    func saveAlbumEdit(_ albumID: String, title: String?, artist: String?, year: Int?,
+                       cover: Data?, removeCover: Bool) async {
+        var override = await override(for: albumID)
+        override.title = title
+        override.artist = artist
+        override.year = year
+        let oldCover = override.artworkFile
+        if let cover, let file = await Task.detached(priority: .userInitiated, operation: { Self.saveCover(cover) }).value {
+            override.artworkFile = file
+        } else if removeCover {
+            override.artworkFile = nil
+        }
+        if let oldCover, oldCover != override.artworkFile {
+            try? FileManager.default.removeItem(at: AlbumOverrides.coversFolder.appendingPathComponent(oldCover))
+        }
+        albums = await catalog.setOverride(override)
+    }
+
+    /// Clears every edit of the album, including a chosen cover.
+    func restoreOriginal(_ albumID: String) async {
+        await saveAlbumEdit(albumID, title: nil, artist: nil, year: nil, cover: nil, removeCover: true)
+    }
+
+    /// Stores a picked image as a JPEG of at most 1500 px. Returns its file name.
+    nonisolated private static func saveCover(_ data: Data) -> String? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 1500,
+              ] as CFDictionary),
+              let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.9) else { return nil }
+        let name = UUID().uuidString + ".jpg"
+        let folder = AlbumOverrides.coversFolder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        guard (try? jpeg.write(to: folder.appendingPathComponent(name), options: .atomic)) != nil else { return nil }
+        return name
     }
 
     /// Moves unreadable tracks to Recently Deleted.

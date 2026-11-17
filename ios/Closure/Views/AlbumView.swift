@@ -5,13 +5,20 @@ struct AlbumView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @State private var pendingDelete: Track?
+    @State private var editing = false
 
     private var album: Album? { library.albums.first { $0.id == albumID } }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackBar(title: "Library")
+                BackBar(title: "Library") {
+                    if album != nil {
+                        MoreMenu {
+                            Button("Edit Album…", systemImage: "pencil") { editing = true }
+                        }
+                    }
+                }
                 if let album {
                     header(album)
                     trackList(album)
@@ -26,6 +33,29 @@ struct AlbumView: View {
         }
         .background(Theme.paper.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+#if DEBUG
+        .task {
+            let arguments = ProcessInfo.processInfo.arguments
+            // -ClosureEditApply: save a sample edit (title, year, a drawn cover), for screenshots.
+            if arguments.contains("-ClosureEditApply"), let album, !album.isEdited {
+                let cover = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 600)).jpegData(withCompressionQuality: 0.9) { context in
+                    UIColor(red: 0.16, green: 0.20, blue: 0.27, alpha: 1).setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 600, height: 600))
+                    UIColor(red: 0.83, green: 0.32, blue: 0.16, alpha: 1).setFill()
+                    context.fill(CGRect(x: 60, y: 380, width: 480, height: 24))
+                }
+                await library.saveAlbumEdit(album.id, title: "Edited Title", artist: nil, year: 1999, cover: cover, removeCover: false)
+            }
+            if arguments.contains("-ClosureEdit") { editing = true }
+        }
+#endif
+        .sheet(isPresented: $editing) {
+            if let album {
+                AlbumEditView(album: album)
+                    .presentationBackground(Theme.paper)
+                    .presentationDragIndicator(.visible)
+            }
+        }
         .confirmationDialog("Delete this track?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible, presenting: pendingDelete) { track in
             Button("Delete \u{201C}\(track.title)\u{201D}", role: .destructive) {

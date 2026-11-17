@@ -18,6 +18,8 @@ actor ArtworkStore {
         let directory: URL
         let sampleTracks: [URL]
         let stamp: TimeInterval
+        /// A cover the user chose; used before anything in the files.
+        var override: URL? = nil
     }
 
     private let memory = NSCache<NSString, UIImage>()
@@ -65,6 +67,7 @@ actor ArtworkStore {
     // MARK: - Finding artwork
 
     private static func findArtwork(_ request: Request) async -> Data? {
+        if let override = request.override, let data = try? Data(contentsOf: override) { return data }
         for directory in searchDirectories(for: request.directory) {
             if let data = folderImage(in: directory) { return data }
         }

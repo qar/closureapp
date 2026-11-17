@@ -7,7 +7,7 @@ import SQLite3
 /// table is the source of truth for metadata; the files keep the layout they were
 /// imported with. Not thread safe: one owner (LibraryCatalog) uses it at a time.
 final class LibraryDatabase {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
 
     enum DatabaseError: Error, CustomStringConvertible {
         case sqlite(String)
@@ -126,6 +126,47 @@ final class LibraryDatabase {
                 PRAGMA user_version = 1;
                 """)
         }
+        if version < 2 {
+            // The user's album edits, keyed by the album's grouping key from its tags.
+            try execute("""
+                CREATE TABLE IF NOT EXISTS album_overrides (
+                    album_key TEXT PRIMARY KEY NOT NULL,
+                    title TEXT, artist TEXT, year INTEGER, artwork_file TEXT
+                ) WITHOUT ROWID;
+                PRAGMA user_version = 2;
+                """)
+        }
+    }
+
+    // MARK: - Album overrides
+
+    func allOverrides() throws -> [String: AlbumOverride] {
+        var overrides: [String: AlbumOverride] = [:]
+        try query("SELECT album_key, title, artist, year, artwork_file FROM album_overrides") { row in
+            let key = Self.text(row, 0) ?? ""
+            overrides[key] = AlbumOverride(albumKey: key, title: Self.text(row, 1), artist: Self.text(row, 2),
+                                           year: Self.int(row, 3), artworkFile: Self.text(row, 4))
+        }
+        return overrides
+    }
+
+    /// Saves an override; an empty one is deleted.
+    func setOverride(_ override: AlbumOverride) throws {
+        if override.isEmpty {
+            let statement = try prepare("DELETE FROM album_overrides WHERE album_key = ?")
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, override.albumKey)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
+            return
+        }
+        let statement = try prepare("INSERT OR REPLACE INTO album_overrides (album_key, title, artist, year, artwork_file) VALUES (?, ?, ?, ?, ?)")
+        defer { sqlite3_finalize(statement) }
+        bind(statement, 1, override.albumKey)
+        bind(statement, 2, override.title)
+        bind(statement, 3, override.artist)
+        bind(statement, 4, override.year)
+        bind(statement, 5, override.artworkFile)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
     }
 
     // MARK: - SQLite helpers

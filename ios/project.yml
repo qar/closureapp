@@ -68,6 +68,7 @@ targets:
       - path: Closure/Library/PlaybackState.swift
       - path: Closure/Library/StorageSummary.swift
       - path: Closure/Library/FileProblems.swift
+      - path: Closure/Library/AlbumOverride.swift
     dependencies:
       - sdk: libsqlite3.tbd
     settings:

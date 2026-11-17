@@ -453,7 +453,7 @@ features:
     why: [reviews-2026-11（自动配错封面，或所有歌同一张）]
     acceptance:
       - 顺序：内嵌封面，文件夹内 cover/folder 图片，用户指定。不自动联网替换。
-    notes: iOS 先找文件夹图片（cover、folder、front 等，CD1/CD2 会找上级目录），再读内嵌封面（FLAC PICTURE 块，包括带 ID3 头的文件；其他格式用 AVFoundation）。还不能手动替换。
+    notes: iOS 可手动替换封面（2026-11-16）：从照片或文件选择，缩到最长 1500 px 存在 Application Support/Library/Covers，优先于文件夹图片和内嵌封面；可改回原封面。在线查找封面见 library.musicbrainz。
 
   - id: library.batch-ops
     title: 批量删除、批量加入歌单、批量收藏
@@ -473,8 +473,8 @@ features:
     title: 在 App 内编辑标签
     category: library
     priority: P2
-    platforms: { ios: planned, macos: partial }
-    notes: macOS 可以修改专辑名、专辑艺人和封面。
+    platforms: { ios: partial, macos: partial }
+    notes: iOS 专辑级编辑完成（2026-11-16）：专辑页“…”→ Edit Album 可改标题、艺人、年份、封面。修改存进数据库 album_overrides 表（schema 2），按专辑原始分组键识别，不改文件和标签；“Restore Original”恢复标签值。尚未做：单曲标题等曲目级编辑。
 
   - id: library.musicbrainz
     title: 由用户触发的 MusicBrainz 元数据匹配

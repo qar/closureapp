@@ -57,6 +57,8 @@ actor LibraryCatalog {
     /// could not open.
     private(set) var lastRemoved: [Track] = []
     private(set) var lastNewlyUnreadable: [Track] = []
+    /// The user's album edits, applied after grouping.
+    private(set) var overrides: [String: AlbumOverride] = [:]
     private static let readers = 4
     private static let publishInterval: TimeInterval = 1.0
 
@@ -70,7 +72,8 @@ actor LibraryCatalog {
     func load() -> [Album] {
         let rows = (try? database?.allTracks()) ?? []
         tracks = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return LibraryGrouping.albums(from: Array(tracks.values))
+        overrides = (try? database?.allOverrides()) ?? [:]
+        return grouped()
     }
 
     /// Brings the database in line with the files under `root`. Unchanged files are
@@ -130,7 +133,14 @@ actor LibraryCatalog {
     }
 
     private func grouped() -> [Album] {
-        LibraryGrouping.albums(from: Array(tracks.values))
+        AlbumOverrides.apply(overrides, to: LibraryGrouping.albums(from: Array(tracks.values)))
+    }
+
+    /// Saves an album edit and returns the albums with it applied.
+    func setOverride(_ override: AlbumOverride) -> [Album] {
+        try? database?.setOverride(override)
+        overrides[override.albumKey] = override.isEmpty ? nil : override
+        return grouped()
     }
 
     private static func listAudioFiles(under root: URL) -> ([String: LibraryDatabase.Stamp], [String: URL]) {

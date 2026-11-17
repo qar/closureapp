@@ -185,6 +185,17 @@ final class PlayerModel {
         saveState()
     }
 
+    /// Picks up library changes (an edited album title or cover) for tracks in the queue.
+    func refreshTracks(from albums: [Album]) {
+        guard !queue.isEmpty else { return }
+        let library = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let updated = queue.map { library[$0.id] ?? $0 }
+        guard updated != queue else { return }
+        queue = updated
+        originalQueue = originalQueue.map { library[$0.id] ?? $0 }
+        updateNowPlaying()
+    }
+
     // MARK: - Queue editing
 
     /// Puts `tracks` right after the current track. With nothing to play, plays them.
@@ -470,7 +481,7 @@ final class PlayerModel {
         ]
         if !track.artist.isEmpty { info[MPMediaItemPropertyArtist] = track.artist }
         if !track.album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = track.album }
-        if let cached = nowPlayingArtwork, cached.key == track.albumKey {
+        if let cached = nowPlayingArtwork, cached.key == track.artworkRequest.key {
             info[MPMediaItemPropertyArtwork] = cached.artwork
         } else {
             loadArtwork(for: track)
@@ -485,7 +496,7 @@ final class PlayerModel {
             guard let image = await ArtworkStore.shared.image(for: request, pixelSize: 600),
                   !Task.isCancelled, let self, self.currentTrack?.albumKey == track.albumKey else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-            self.nowPlayingArtwork = (track.albumKey, artwork)
+            self.nowPlayingArtwork = (request.key, artwork)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
             info[MPMediaItemPropertyArtwork] = artwork
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info

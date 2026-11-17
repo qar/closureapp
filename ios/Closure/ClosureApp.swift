@@ -65,6 +65,9 @@ struct ClosureApp: App {
                         }
                     }
                 }
+                .onChange(of: library.albums) { _, albums in
+                    player.refreshTracks(from: albums)
+                }
                 .onChange(of: library.isLoaded, initial: true) { _, loaded in
                     // Put back what was playing last time, paused.
                     // Debug screens start their own playback.

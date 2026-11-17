@@ -29,6 +29,11 @@ struct Track: Identifiable, Hashable, Codable {
     var composer: String?
     var genre: String?
     var isCompilation: Bool?
+    /// Set when an album override applies: the album's key from the tags, kept while
+    /// the displayed album title changes. Never stored.
+    var originalAlbumKey: String? = nil
+    /// The user's cover for this track's album, when there is one. Never stored.
+    var artworkOverride: URL? = nil
 
     var url: URL { LibraryPaths.musicFolder.appendingPathComponent(id) }
 
@@ -47,7 +52,9 @@ struct Track: Identifiable, Hashable, Codable {
     /// Tracks with the same key form one album. With an album artist tag the key is
     /// "album artist + album", so discs in separate folders and compilations stay
     /// together. Without it, the key is "album folder + album".
-    var albumKey: String {
+    var albumKey: String { originalAlbumKey ?? tagAlbumKey }
+
+    private var tagAlbumKey: String {
         let albumName = album.trimmingCharacters(in: .whitespaces).lowercased()
         if let albumArtist = albumArtist?.trimmingCharacters(in: .whitespaces), !albumArtist.isEmpty {
             return "artist\u{1F}\(albumArtist.lowercased())\u{1F}\(albumName)"
@@ -70,8 +77,9 @@ struct Track: Identifiable, Hashable, Codable {
     }
 
     var artworkRequest: ArtworkStore.Request {
-        ArtworkStore.Request(key: albumKey, directory: url.deletingLastPathComponent(),
-                             sampleTracks: [url], stamp: modified.timeIntervalSince1970)
+        ArtworkStore.Request(key: albumKey + (artworkOverride.map { "|" + $0.lastPathComponent } ?? ""),
+                             directory: url.deletingLastPathComponent(),
+                             sampleTracks: [url], stamp: modified.timeIntervalSince1970, override: artworkOverride)
     }
 }
 
@@ -80,9 +88,22 @@ struct Album: Identifiable, Hashable {
     let title: String
     let artist: String
     let tracks: [Track]
+    /// Set by an album override.
+    var yearOverride: Int? = nil
+    var artworkOverride: URL? = nil
+    /// What the tags said, when the user changed the title, artist or year.
+    var original: Original? = nil
+
+    struct Original: Hashable {
+        var title: String
+        var artist: String
+        var year: Int?
+    }
+
+    var isEdited: Bool { original != nil }
 
     var folder: String { tracks.first?.folder ?? "" }
-    var year: Int? { tracks.compactMap(\.year).min() }
+    var year: Int? { yearOverride ?? tracks.compactMap(\.year).min() }
     var duration: Double { tracks.reduce(0) { $0 + $1.duration } }
     var discs: [Int] { Array(Set(tracks.map { $0.discNumber ?? 1 })).sorted() }
 
@@ -93,9 +114,10 @@ struct Album: Identifiable, Hashable {
     }
 
     var artworkRequest: ArtworkStore.Request {
-        ArtworkStore.Request(key: id, directory: tracks.first?.url.deletingLastPathComponent() ?? LibraryPaths.musicFolder,
+        ArtworkStore.Request(key: id + (artworkOverride.map { "|" + $0.lastPathComponent } ?? ""),
+                             directory: tracks.first?.url.deletingLastPathComponent() ?? LibraryPaths.musicFolder,
                              sampleTracks: tracks.prefix(2).map(\.url),
-                             stamp: tracks.first?.modified.timeIntervalSince1970 ?? 0)
+                             stamp: tracks.first?.modified.timeIntervalSince1970 ?? 0, override: artworkOverride)
     }
 }
 

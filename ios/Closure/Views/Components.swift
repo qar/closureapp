@@ -176,8 +176,9 @@ struct TextAction: View {
 }
 
 /// "‹ LIBRARY" back control used by pushed screens.
-struct BackBar: View {
+struct BackBar<Trailing: View>: View {
     let title: String
+    @ViewBuilder var trailing: () -> Trailing
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -194,8 +195,32 @@ struct BackBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Back to \(title)")
             Spacer()
+            trailing()
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
+        .padding(.trailing, 10)
+    }
+}
+
+extension BackBar where Trailing == EmptyView {
+    init(title: String) {
+        self.init(title: title) { EmptyView() }
+    }
+}
+
+/// The "…" button used on Now Playing, in Google Drive and on the album page.
+struct MoreMenu<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        Menu(content: content) {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("More")
     }
 }
 
