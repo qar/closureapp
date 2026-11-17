@@ -498,9 +498,9 @@ features:
     title: 在线匹配歌词（LRCLIB）
     category: lyrics
     priority: P2
-    platforms: { ios: planned, macos: done }
+    platforms: { ios: done, macos: done }
     why: [forums-2026-11]
-    notes: 有开发者称在线歌词会因版权被 App Store 拒绝，但也有已上架 App 提供此功能。开发前先查审核指南。
+    notes: iOS 完成（2026-11-16），由用户触发：Find Album Info 应用候选后，为没有歌词的曲目逐首查 LRCLIB；歌词页“No lyrics”时可单独 Find Lyrics Online。先按歌名、艺人、专辑、时长精确查，查不到再搜索并只取时长相差 3 秒以内的结果，优先带时间轴的。存在 Application Support/Library/Lyrics，不写进音乐文件夹；读取顺序是用户的 .lrc、标签、在线获取。手机语言为简体中文时，在线获取的繁体歌词用系统转换显示为简体。版权：LRCLIB 为用户上传，付费 App 使用属于灰色地带，用户已知悉并同意（2026-11-16）。
 
   - id: lyrics.lock-screen
     title: 锁屏显示当前一句歌词

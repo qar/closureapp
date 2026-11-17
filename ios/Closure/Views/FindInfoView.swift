@@ -16,6 +16,8 @@ struct FindInfoView: View {
     @State private var picked: MusicBrainz.Release?
     @State private var applying = false
     @State private var notice: String?
+    /// While applying: "Getting the cover", then lyrics progress.
+    @State private var applyingStep = "Getting the cover"
 
     private static let client = MusicBrainzClient()
 
@@ -40,7 +42,7 @@ struct FindInfoView: View {
                         .font(Theme.serif(32))
                         .foregroundStyle(Theme.ink)
                         .accessibilityAddTraits(.isHeader)
-                    Text("Searches MusicBrainz with this title and artist. Covers come from the Cover Art Archive. Your files are not changed.")
+                    Text("Searches MusicBrainz with this title and artist. Covers come from the Cover Art Archive, and lyrics for tracks without any from LRCLIB. Your files are not changed.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.muted)
                         .lineSpacing(3)
@@ -64,7 +66,7 @@ struct FindInfoView: View {
                     Theme.paper.opacity(0.7).ignoresSafeArea()
                     VStack(spacing: 10) {
                         ProgressView().tint(Theme.ink)
-                        MetaText("Getting the cover", size: 10)
+                        MetaText(applyingStep, size: 10)
                     }
                 }
             }
@@ -195,13 +197,17 @@ struct FindInfoView: View {
                                         artist: info ? edit(release.artist, original.artist) : current.artist,
                                         year: info ? edit(release.year, original.year) : current.year,
                                         cover: cover, removeCover: false)
-            applying = false
-            if cover == nil {
-                notice = info ? "The info was applied. This release has no cover on the Cover Art Archive."
-                              : "This release has no cover on the Cover Art Archive."
-            } else {
-                dismiss()
+            // Lyrics for the tracks that have none, one request at a time.
+            let tracks = album.tracks
+            let lyrics = await LyricsClient().fillMissing(tracks, artist: info ? release.artist : album.artist,
+                                                          album: info ? release.title : album.title) { done, total in
+                await MainActor.run { applyingStep = "Getting lyrics \(min(done + 1, total)) / \(total)" }
             }
+            applying = false
+            var lines: [String] = []
+            lines.append(cover == nil ? "This release has no cover on the Cover Art Archive." : "The cover was applied.")
+            lines.append("Lyrics: \(lyrics.found) of \(lyrics.total) track\(lyrics.total == 1 ? "" : "s").")
+            notice = lines.joined(separator: " ")
         }
     }
 }

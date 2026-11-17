@@ -22,7 +22,10 @@ struct NowPlayingView: View {
                     .aspectRatio(1, contentMode: .fit)
                     .overlay {
                         if showingLyrics {
-                            LyricsView(lyrics: lyrics, isLoading: lyricsLoading) { showingLyrics = false }
+                            LyricsView(lyrics: lyrics, isLoading: lyricsLoading, onFind: { await findLyrics(for: track) }) {
+                                showingLyrics = false
+                            }
+                            .id(track.id)
                         } else {
                             ArtworkView(request: track.artworkRequest, title: track.album, pixelSize: 1100)
                                 .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
@@ -36,7 +39,7 @@ struct NowPlayingView: View {
                     .task(id: track.id) {
                         lyrics = nil
                         lyricsLoading = true
-                        lyrics = await LyricsLoader.load(for: track.url)
+                        lyrics = await LyricsLoader.load(for: track)
                         lyricsLoading = false
                     }
 
@@ -93,6 +96,14 @@ struct NowPlayingView: View {
                 showingSignalPath = arguments[flag + 1] == "signal"
                 showingQueue = arguments[flag + 1] == "queue"
                 showingLyrics = arguments[flag + 1] == "lyrics"
+            }
+            // -ClosureFindLyrics: look the current track up on LRCLIB, as the button would.
+            if arguments.contains("-ClosureFindLyrics"), let track = player.currentTrack {
+                Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    let found = await findLyrics(for: track)
+                    print("[Closure] lyrics lookup: \(found ? "found" : "none") for \(track.title)")
+                }
             }
             // -ClosurePlayMode <mode>: switch to it after 2 s, as a tap would, for screenshots.
             if let modeFlag = arguments.firstIndex(of: "-ClosurePlayMode"), modeFlag + 1 < arguments.count,
@@ -217,6 +228,14 @@ struct NowPlayingView: View {
         .accessibilityLabel("Play mode")
         .accessibilityValue(mode.title)
         .accessibilityHint("Changes to \(mode.next.title)")
+    }
+
+    /// Looks the current track up on LRCLIB and shows what it finds.
+    private func findLyrics(for track: Track) async -> Bool {
+        let found = await LyricsClient().fillMissing([track], artist: nil, album: nil) { _, _ in }
+        guard found.found > 0, player.currentTrack?.id == track.id else { return false }
+        lyrics = await LyricsLoader.load(for: track)
+        return lyrics != nil
     }
 
     private func subtitle(_ track: Track) -> String {
