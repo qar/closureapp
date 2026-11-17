@@ -46,3 +46,28 @@ final class AlbumOverrideTests: XCTestCase {
         XCTAssertEqual(try database.trackCount(), 1, "tracks are untouched")
     }
 }
+
+final class SquareThumbnailTests: XCTestCase {
+    private func jpeg(width: Int, height: Int) -> Data {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).jpegData(withCompressionQuality: 0.9) { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+
+    func testTallAndWideImagesBecomeSharpSquares() throws {
+        // The short edge sets the size, so a tall screenshot still gives a full 300 px square.
+        let tall = try XCTUnwrap(ArtworkStore.squareThumbnail(jpeg(width: 600, height: 1300), side: 300))
+        XCTAssertEqual(tall.width, 300)
+        XCTAssertEqual(tall.height, 300)
+        let wide = try XCTUnwrap(ArtworkStore.squareThumbnail(jpeg(width: 1600, height: 900), side: 500))
+        XCTAssertEqual(wide.width, 500)
+        XCTAssertEqual(wide.height, 500)
+        // Never larger than the image itself.
+        let small = try XCTUnwrap(ArtworkStore.squareThumbnail(jpeg(width: 200, height: 400), side: 1500))
+        XCTAssertEqual(small.width, 200)
+        XCTAssertEqual(small.height, 200)
+    }
+}

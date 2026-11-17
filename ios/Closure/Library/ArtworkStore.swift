@@ -37,7 +37,9 @@ actor ArtworkStore {
     }
 
     func image(for request: Request, pixelSize: Int = 720) async -> UIImage? {
-        let cacheKey = "\(request.key)|\(request.stamp)|\(pixelSize)"
+        // v2: square thumbnails sized by the short edge (v1 used the long edge, which
+        // left non-square images blurry once cropped to a square).
+        let cacheKey = "v2|\(request.key)|\(request.stamp)|\(pixelSize)"
         if let image = memory.object(forKey: cacheKey as NSString) { return image }
         if misses.contains(cacheKey) { return nil }
 
@@ -113,8 +115,23 @@ actor ArtworkStore {
     // MARK: - Helpers
 
     private static func downsample(_ data: Data, maxPixel: Int) -> UIImage? {
+        squareThumbnail(data, side: maxPixel).map { UIImage(cgImage: $0) }
+    }
+
+    /// A square image of at most `side` pixels from the middle of `data`. Covers show
+    /// as squares, so the short edge decides the size: scaling by the long edge would
+    /// leave a tall or wide image too small once cropped.
+    static func squareThumbnail(_ data: Data, side: Int) -> CGImage? {
         let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let source = CGImageSourceCreateWithData(data as CFData, options as CFDictionary) else { return nil }
+        var maxPixel = side
+        if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
+           width > 0, height > 0 {
+            let long = max(width, height), short = min(width, height)
+            // Enough on the long edge for the short edge to reach `side`, never above the original.
+            maxPixel = min(long, Int((Double(side) * Double(long) / Double(short)).rounded(.up)))
+        }
         let thumbnailOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -122,7 +139,10 @@ actor ArtworkStore {
             kCGImageSourceThumbnailMaxPixelSize: maxPixel,
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else { return nil }
-        return UIImage(cgImage: image)
+        let edge = min(image.width, image.height)
+        guard image.width != image.height else { return image }
+        let crop = CGRect(x: (image.width - edge) / 2, y: (image.height - edge) / 2, width: edge, height: edge)
+        return image.cropping(to: crop) ?? image
     }
 
     private static func hash(_ string: String) -> String {

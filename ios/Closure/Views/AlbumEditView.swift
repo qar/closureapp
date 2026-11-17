@@ -21,6 +21,13 @@ struct AlbumEditView: View {
     @State private var choosingFile = false
     @State private var confirmingRestore = false
     @State private var saving = false
+    /// A picked image waiting to be cropped.
+    @State private var cropping: CropSource?
+
+    struct CropSource: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
 
     /// What the tags say; shown as placeholders and used to tell real edits apart.
     private let original: Album.Original
@@ -71,7 +78,7 @@ struct AlbumEditView: View {
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self) { useCover(data) }
+                if let data = try? await item.loadTransferable(type: Data.self) { crop(data) }
                 photoItem = nil
             }
         }
@@ -79,8 +86,25 @@ struct AlbumEditView: View {
             guard case let .success(url) = result else { return }
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            if let data = try? Data(contentsOf: url) { useCover(data) }
+            if let data = try? Data(contentsOf: url) { crop(data) }
         }
+        .fullScreenCover(item: $cropping) { source in
+            CoverCropView(image: source.image) { useCover($0) }
+        }
+#if DEBUG
+        .task {
+            // -ClosureCrop: open Move and Scale with a tall sample image.
+            if ProcessInfo.processInfo.arguments.contains("-ClosureCrop") {
+                let sample = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 1300)).jpegData(withCompressionQuality: 0.9) { context in
+                    UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1).setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 600, height: 1300))
+                    UIColor(red: 0.83, green: 0.32, blue: 0.16, alpha: 1).setFill()
+                    context.cgContext.fillEllipse(in: CGRect(x: 150, y: 500, width: 300, height: 300))
+                }
+                crop(sample)
+            }
+        }
+#endif
         .confirmationDialog("Restore the original album info?", isPresented: $confirmingRestore, titleVisibility: .visible) {
             Button("Restore Original", role: .destructive) {
                 Task {
@@ -163,6 +187,12 @@ struct AlbumEditView: View {
         .foregroundStyle(Theme.ink)
         .frame(minHeight: 36)
         .contentShape(Rectangle())
+    }
+
+    /// Opens Move and Scale for a picked image.
+    private func crop(_ data: Data) {
+        guard let image = CoverCropView.prepare(data) else { return }
+        cropping = CropSource(image: image)
     }
 
     private func useCover(_ data: Data) {

@@ -312,14 +312,10 @@ final class LibraryStore {
         await saveAlbumEdit(albumID, title: nil, artist: nil, year: nil, cover: nil, removeCover: true)
     }
 
-    /// Stores a picked image as a JPEG of at most 1500 px. Returns its file name.
+    /// Stores a picked image as a square JPEG (the middle of it) of at most 1500 px.
+    /// Returns its file name.
     nonisolated private static func saveCover(_ data: Data) -> String? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceThumbnailMaxPixelSize: 1500,
-              ] as CFDictionary),
+        guard let image = ArtworkStore.squareThumbnail(data, side: 1500),
               let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.9) else { return nil }
         let name = UUID().uuidString + ".jpg"
         let folder = AlbumOverrides.coversFolder
