@@ -12,6 +12,9 @@ final class PlayerModel {
     private(set) var isPlaying = false
     private(set) var lastError: String?
     private(set) var repeatMode: CLSRepeatMode = .all
+    /// Shuffle mode. On: the tracks after the current one are in random order. Off: the
+    /// queue is in the order it came in (album order).
+    private(set) var isShuffled = false
     /// Where the queue came from, e.g. an album title. Shown as "Playing from".
     private(set) var contextTitle = ""
 
@@ -29,6 +32,8 @@ final class PlayerModel {
     /// another app's audio.
     private(set) var pendingPosition: Double?
     @ObservationIgnored private let stateURL: URL
+    /// The queue in the order it came in, to return to when shuffle is turned off.
+    @ObservationIgnored private var originalQueue: [Track] = []
 
     init(stateURL: URL = PlaybackState.appURL) {
         self.stateURL = stateURL
@@ -58,13 +63,54 @@ final class PlayerModel {
 
     /// Plays `tracks` (normally one album) from `index`. The hardware rate is chosen
     /// once per queue, from the starting track, so album playback stays gapless.
-    /// With `shuffled`, the queue order is shuffled and playback starts at its first track.
-    func play(_ tracks: [Track], from index: Int, context: String = "", shuffled: Bool = false) {
+    ///
+    /// `shuffled` sets shuffle mode: true (a Shuffle button) starts at a random track,
+    /// false (a Play button) plays in order. Nil (a tap on a track) keeps the mode; with
+    /// shuffle on, the tapped track plays first and the rest follow in random order.
+    func play(_ tracks: [Track], from index: Int, context: String = "", shuffled: Bool? = nil) {
         guard tracks.indices.contains(index) else { return }
-        let ordered = shuffled ? tracks.shuffled() : tracks
-        queue = ordered
+        if let shuffled { isShuffled = shuffled }
+        originalQueue = tracks
         contextTitle = context
-        start(at: shuffled ? 0 : index, position: 0)
+        if shuffled == true {
+            queue = tracks.shuffled()
+        } else if isShuffled {
+            queue = [tracks[index]] + tracks.enumerated().filter { $0.offset != index }.map(\.element).shuffled()
+        } else {
+            queue = tracks
+        }
+        start(at: isShuffled ? 0 : index, position: 0)
+    }
+
+    /// Turns shuffle mode on or off. The current track keeps playing without a break;
+    /// only the tracks after it change. Off returns to the original order and continues
+    /// from the current track's place in it.
+    func setShuffle(_ on: Bool) {
+        guard on != isShuffled else { return }
+        isShuffled = on
+        defer {
+            MPRemoteCommandCenter.shared().changeShuffleModeCommand.currentShuffleType = on ? .items : .off
+            updateNowPlaying()
+            saveState()
+        }
+        guard let current = currentTrack else { return }
+        let newQueue: [Track]
+        let newIndex: Int
+        if on {
+            originalQueue = queue
+            newQueue = [current] + queue.enumerated().filter { $0.offset != currentIndex }.map(\.element).shuffled()
+            newIndex = 0
+        } else {
+            guard let index = originalQueue.firstIndex(where: { $0.id == current.id }) else { return }
+            newQueue = originalQueue
+            newIndex = index
+        }
+        queue = newQueue
+        currentIndex = newIndex
+        // A restored queue is not in the engine yet; it is loaded on play.
+        if pendingPosition == nil {
+            engine.replaceQueue(newQueue.map(\.url.path), currentIndex: newIndex)
+        }
     }
 
     /// Loads the queue into the engine and plays from `position` in track `index`.
@@ -102,6 +148,8 @@ final class PlayerModel {
         currentIndex = restored.index
         pendingPosition = restored.position
         contextTitle = saved.context
+        isShuffled = saved.shuffled ?? false
+        originalQueue = isShuffled ? saved.originalTracks(from: library) : restored.tracks
         if let mode = CLSRepeatMode(rawValue: saved.repeatMode) { setRepeatMode(mode) }
         print(String(format: "[Closure] restored %d track(s), track %d at %.0f s", queue.count, currentIndex + 1, restored.position))
     }
@@ -112,7 +160,8 @@ final class PlayerModel {
         guard !queue.isEmpty, queue.indices.contains(currentIndex) else { return }
         let position = pendingPosition ?? engine.status.positionSeconds
         PlaybackState(trackIDs: queue.map(\.id), index: currentIndex, position: position,
-                      context: contextTitle, repeatMode: repeatMode.rawValue).save(to: stateURL)
+                      context: contextTitle, repeatMode: repeatMode.rawValue,
+                      shuffled: isShuffled, originalTrackIDs: isShuffled ? originalQueue.map(\.id) : nil).save(to: stateURL)
     }
 
     func togglePlayPause() {
@@ -285,6 +334,11 @@ final class PlayerModel {
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated { self?.previous() }
+            return .success
+        }
+        center.changeShuffleModeCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangeShuffleModeCommandEvent else { return .commandFailed }
+            MainActor.assumeIsolated { self?.setShuffle(event.shuffleType != .off) }
             return .success
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in

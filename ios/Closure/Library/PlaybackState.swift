@@ -10,6 +10,15 @@ struct PlaybackState: Codable, Equatable {
     var context: String
     /// CLSRepeatMode raw value.
     var repeatMode: Int
+    /// Shuffle mode, and the queue in its original order to return to. Absent in
+    /// states saved before shuffle mode existed.
+    var shuffled: Bool? = nil
+    var originalTrackIDs: [String]? = nil
+
+    /// The original order, without tracks deleted since.
+    func originalTracks(from library: [String: Track]) -> [Track] {
+        (originalTrackIDs ?? []).compactMap { library[$0] }
+    }
 
     /// The saved queue matched against the current library. Tracks deleted since are
     /// left out. When the current track is gone, playback continues with the next

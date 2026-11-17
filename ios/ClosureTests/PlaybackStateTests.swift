@@ -48,6 +48,22 @@ final class PlaybackStateTests: XCTestCase {
         XCTAssertEqual(restored.position, 0)
     }
 
+    func testStatesSavedBeforeShuffleExistedStillLoad() throws {
+        let old = #"{"trackIDs":["a","b"],"index":1,"position":3,"context":"X","repeatMode":1}"#
+        let state = try JSONDecoder().decode(PlaybackState.self, from: Data(old.utf8))
+        XCTAssertNil(state.shuffled)
+        XCTAssertEqual(state.originalTracks(from: library(["a", "b"])).count, 0)
+    }
+
+    func testShuffleModeAndTheOriginalOrderRoundTrip() throws {
+        var saved = state(["c", "a", "b"], index: 0, position: 5)
+        saved.shuffled = true
+        saved.originalTrackIDs = ["a", "b", "c", "gone"]
+        let decoded = try JSONDecoder().decode(PlaybackState.self, from: JSONEncoder().encode(saved))
+        XCTAssertEqual(decoded.shuffled, true)
+        XCTAssertEqual(decoded.originalTracks(from: library(["a", "b", "c"])).map(\.id), ["a", "b", "c"])
+    }
+
     func testSavesAndLoads() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("state-\(UUID().uuidString)/state.json")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

@@ -69,6 +69,25 @@ struct NowPlayingView: View {
                 showingSignalPath = arguments[flag + 1] == "signal"
                 showingQueue = arguments[flag + 1] == "queue"
             }
+            // -ClosureShuffle: turn shuffle on after 3 s and log the order and position.
+            if arguments.contains("-ClosureShuffle") {
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    let before = player.progress.position
+                    let track = player.currentTrack?.title ?? "?"
+                    player.setShuffle(true)
+                    try? await Task.sleep(for: .seconds(1))
+                    print(String(format: "[Closure] shuffle on: %@ %.2f s -> %@ %.2f s; queue %@", track, before,
+                                 player.currentTrack?.title ?? "?", player.progress.position,
+                                 player.queue.map(\.title).joined(separator: ", ")))
+                    try? await Task.sleep(for: .seconds(1))
+                    player.setShuffle(false)
+                    try? await Task.sleep(for: .seconds(1))
+                    print(String(format: "[Closure] shuffle off: %@ at %.2f s, index %d; queue %@", player.currentTrack?.title ?? "?",
+                                 player.progress.position, player.currentIndex, player.queue.map(\.title).joined(separator: ", ")))
+                    player.setShuffle(true)
+                }
+            }
         }
 #endif
     }
@@ -124,7 +143,7 @@ struct NowPlayingView: View {
 
     private func bottomBar(_ track: Track) -> some View {
         HStack {
-            Color.clear.frame(width: 44, height: 44)
+            shuffleButton
             Spacer()
             Button { showingSignalPath = true } label: {
                 MetaText("\(track.shortFormat)  ·  \(player.status.resampling ? "Converted" : "No conversion")  ›",
@@ -139,6 +158,26 @@ struct NowPlayingView: View {
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 6)
+    }
+
+    /// Muted when off; ink with a dot below when on. The dot sits outside the icon's
+    /// box, so the icon lines up with the queue button on the other side.
+    private var shuffleButton: some View {
+        let on = player.isShuffled
+        return Button { player.setShuffle(!on) } label: {
+            Image(systemName: "shuffle")
+                .font(.system(size: 20))
+                .foregroundStyle(on ? Theme.ink : Theme.muted)
+                .frame(width: 44, height: 44)
+                .overlay(alignment: .bottom) {
+                    Circle().fill(Theme.ink).frame(width: 4, height: 4).opacity(on ? 1 : 0).offset(y: -2)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Shuffle")
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func subtitle(_ track: Track) -> String {

@@ -78,7 +78,7 @@ struct AlbumView: View {
 
             HStack(spacing: 24) {
                 TextAction(title: "Play", systemImage: "play.fill") {
-                    player.play(album.tracks, from: 0, context: album.title)
+                    player.play(album.tracks, from: 0, context: album.title, shuffled: false)
                 }
                 if album.tracks.count > 1 {
                     TextAction(title: "Shuffle", systemImage: "shuffle") {
@@ -188,7 +188,7 @@ struct FolderView: View {
                     .padding(.horizontal, Theme.horizontalMargin)
                     .padding(.top, 6)
                 HStack(spacing: 24) {
-                    TextAction(title: "Play", systemImage: "play.fill") { player.play(tracks, from: 0, context: name) }
+                    TextAction(title: "Play", systemImage: "play.fill") { player.play(tracks, from: 0, context: name, shuffled: false) }
                     TextAction(title: "Shuffle", systemImage: "shuffle") { player.play(tracks, from: 0, context: name, shuffled: true) }
                 }
                 .padding(.horizontal, Theme.horizontalMargin)

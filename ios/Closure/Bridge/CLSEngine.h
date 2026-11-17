@@ -49,6 +49,8 @@ typedef NS_ENUM(NSInteger, CLSEngineEventType) {
 /// Drops the output unit after a media services reset. Call setOutputSampleRate next.
 - (void)resetOutput;
 - (void)setQueue:(NSArray<NSString *> *)paths startIndex:(NSInteger)startIndex;
+/// Changes the order around the track being heard; it keeps playing without a break.
+- (void)replaceQueue:(NSArray<NSString *> *)paths currentIndex:(NSInteger)currentIndex;
 - (BOOL)playAndReturnError:(NSError **)error;
 - (void)pause;
 - (void)togglePlayPause;

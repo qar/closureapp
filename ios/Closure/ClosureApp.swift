@@ -67,7 +67,10 @@ struct ClosureApp: App {
                 }
                 .onChange(of: library.isLoaded, initial: true) { _, loaded in
                     // Put back what was playing last time, paused.
-                    if loaded { player.restore(from: library.albums) }
+                    // Debug screens start their own playback.
+                    if loaded, !ProcessInfo.processInfo.arguments.contains("-ClosureScreen") {
+                        player.restore(from: library.albums)
+                    }
 #if DEBUG
                     // -ClosureResume: press play after the restore and log where playback is.
                     if loaded, ProcessInfo.processInfo.arguments.contains("-ClosureResume") {
