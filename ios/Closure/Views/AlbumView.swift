@@ -6,6 +6,7 @@ struct AlbumView: View {
     @Environment(PlayerModel.self) private var player
     @State private var pendingDelete: Track?
     @State private var editing = false
+    @State private var findingInfo = false
 
     private var album: Album? { library.albums.first { $0.id == albumID } }
 
@@ -16,6 +17,7 @@ struct AlbumView: View {
                     if album != nil {
                         MoreMenu {
                             Button("Edit Album…", systemImage: "pencil") { editing = true }
+                            Button("Find Info Online…", systemImage: "magnifyingglass") { findingInfo = true }
                         }
                     }
                 }
@@ -47,8 +49,16 @@ struct AlbumView: View {
                 await library.saveAlbumEdit(album.id, title: "Edited Title", artist: nil, year: 1999, cover: cover, removeCover: false)
             }
             if arguments.contains("-ClosureEdit") { editing = true }
+            if arguments.contains("-ClosureFindInfo") { findingInfo = true }
         }
 #endif
+        .sheet(isPresented: $findingInfo) {
+            if let album {
+                FindInfoView(album: album)
+                    .presentationBackground(Theme.paper)
+                    .presentationDragIndicator(.visible)
+            }
+        }
         .sheet(isPresented: $editing) {
             if let album {
                 AlbumEditView(album: album)

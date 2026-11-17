@@ -249,3 +249,28 @@ struct QueueMenuItems: View {
         }
     }
 }
+
+/// A label above a plain text field with a hairline under it (Edit Album, Find Info).
+struct UnderlineField: View {
+    let label: String
+    @Binding var text: String
+    var placeholder = ""
+    var keyboard: UIKeyboardType = .default
+    var onSubmit: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            MetaText(label, size: 10)
+            TextField(placeholder, text: $text)
+                .font(.system(size: 17))
+                .foregroundStyle(Theme.ink)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(keyboard == .numberPad ? .never : .words)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .onSubmit(onSubmit)
+                .padding(.vertical, 6)
+            Hairline()
+        }
+    }
+}

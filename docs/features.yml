@@ -479,10 +479,10 @@ features:
   - id: library.musicbrainz
     title: 由用户触发的 MusicBrainz 元数据匹配
     category: library
-    priority: P2
-    platforms: { ios: planned, macos: done }
+    priority: P1
+    platforms: { ios: done, macos: done }
     why: [forums-2026-11（自动刮削）]
-    notes: 不在导入时自动联网。
+    notes: iOS 完成（2026-11-16）。专辑页“…”→ Find Info Online，由用户触发，不自动拉取：用专辑标题和艺人搜索 MusicBrainz（每秒最多 1 个请求，带 User-Agent；503 按 Retry-After 重试两次），按得分、曲目数是否一致、有无年份排序；结果显示 Cover Art Archive 缩略图。用户选中后可“使用标题、艺人、年份和封面”或“只用封面”，写入 album_overrides，可 Restore Original。不做声纹识别（AcoustID 商用收费、Chromaprint 许可证待核实、耗电）。隐私说明需写明会发送专辑名和艺人名。中文音乐收录较少，由手动换封面兜底。
 
   # ---------------------------------------------------------------- 歌词
 

@@ -50,11 +50,11 @@ struct AlbumEditView: View {
 
                     coverSection.padding(.top, 24)
 
-                    field("Title", text: $title, placeholder: original.title)
+                    UnderlineField(label: "Title", text: $title, placeholder: original.title)
                         .padding(.top, 28)
-                    field("Artist", text: $artist, placeholder: original.artist)
+                    UnderlineField(label: "Artist", text: $artist, placeholder: original.artist)
                         .padding(.top, 20)
-                    field("Year", text: $year, placeholder: original.year.map(String.init) ?? "Unknown", keyboard: .numberPad)
+                    UnderlineField(label: "Year", text: $year, placeholder: original.year.map(String.init) ?? "Unknown", keyboard: .numberPad)
                         .padding(.top, 20)
 
                     if album.isEdited || album.artworkOverride != nil {
@@ -174,21 +174,6 @@ struct AlbumEditView: View {
     }
 
     // MARK: - Fields
-
-    private func field(_ label: String, text: Binding<String>, placeholder: String,
-                       keyboard: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            MetaText(label, size: 10)
-            TextField(placeholder, text: text)
-                .font(.system(size: 17))
-                .foregroundStyle(Theme.ink)
-                .keyboardType(keyboard)
-                .textInputAutocapitalization(keyboard == .numberPad ? .never : .words)
-                .autocorrectionDisabled()
-                .padding(.vertical, 6)
-            Hairline()
-        }
-    }
 
     // MARK: - Saving
 

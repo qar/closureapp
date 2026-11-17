@@ -28,8 +28,9 @@ struct AlbumTitleParts: Equatable {
                 }
             }
         }
-        // Trailing " - Deluxe Edition" style suffix, only when it names an edition.
-        for separator in [" - ", " – ", " — "] {
+        // Trailing " - Deluxe Edition" or ": The Paradise Edition" (MusicBrainz style)
+        // suffix, only when it names an edition.
+        for separator in [" - ", " – ", " — ", ": "] {
             if let range = trimmed.range(of: separator, options: .backwards) {
                 let suffix = String(trimmed[range.upperBound...])
                 let main = String(trimmed[..<range.lowerBound])

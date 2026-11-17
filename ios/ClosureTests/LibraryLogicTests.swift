@@ -14,6 +14,9 @@ final class AlbumTitlePartsTests: XCTestCase {
 
     func testDashSuffixNeedsAnEditionWord() {
         XCTAssertEqual(AlbumTitleParts("Low Light - Deluxe Edition").edition, "Deluxe Edition")
+        XCTAssertEqual(AlbumTitleParts("Born to Die: The Paradise Edition"),
+                       AlbumTitleParts(main: "Born to Die", edition: "The Paradise Edition"))
+        XCTAssertNil(AlbumTitleParts("Vol. 1: Something Else").edition, "a plain subtitle stays in the title")
         XCTAssertNil(AlbumTitleParts("Hello - Goodbye").edition, "a dash alone does not mark an edition")
     }
 
