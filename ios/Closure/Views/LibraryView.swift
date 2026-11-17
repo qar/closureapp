@@ -8,7 +8,7 @@ enum LibraryRoute: Hashable {
     case folder(String)
     case recentlyDeleted
     case duplicates
-    case storage
+    case info
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
@@ -57,7 +57,6 @@ struct LibraryView: View {
                             header
                             tabBar
                             content
-                            footerLinks
                         }
                         .padding(.bottom, 32)
                     }
@@ -72,7 +71,7 @@ struct LibraryView: View {
                 case let .folder(folder): FolderView(folder: folder)
                 case .recentlyDeleted: RecentlyDeletedView()
                 case .duplicates: DuplicatesView()
-                case .storage: StorageView()
+                case .info: LibraryInfoView()
                 }
             }
         }
@@ -158,6 +157,8 @@ struct LibraryView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("Import")
+            // Same weight and glyph as the "…" on Now Playing and in Google Drive.
+            IconButton(systemName: "ellipsis", size: 20, weight: .semibold, label: "Library Info") { path.append(LibraryRoute.info) }
         }
         .padding(.leading, Theme.horizontalMargin)
         .padding(.trailing, 14)
@@ -204,45 +205,6 @@ struct LibraryView: View {
             countRow(left: "\(folders.count) folders", right: "A–Z")
             listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) track\($0.tracks == 1 ? "" : "s")\(parentPath($0.path))", route: .folder($0.path)) })
         }
-    }
-
-    /// Storage, then Duplicates and Recently Deleted when they have something.
-    private var footerLinks: some View {
-        let extra = library.duplicateGroups.reduce(0) { $0 + $1.count - 1 }
-        return VStack(spacing: 0) {
-            Hairline()
-            footerLink("Storage", meta: library.storage.map { ByteCountFormatter.string(fromByteCount: $0.music, countStyle: .file) } ?? "",
-                       route: .storage)
-            if extra > 0 {
-                footerLink("Duplicates", meta: "\(extra) extra", route: .duplicates)
-            }
-            if !library.trashEntries.isEmpty {
-                footerLink("Recently Deleted", meta: "\(library.trashEntries.count)", route: .recentlyDeleted)
-            }
-        }
-        .padding(.horizontal, Theme.horizontalMargin)
-        .padding(.top, 40)
-    }
-
-    private func footerLink(_ title: String, meta: String, route: LibraryRoute) -> some View {
-        NavigationLink(value: route) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text(title)
-                        .font(.system(size: 17))
-                        .foregroundStyle(Theme.ink)
-                    Spacer()
-                    MetaText(meta, size: 10.5)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.muted)
-                }
-                .padding(.vertical, 16)
-                Hairline()
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     /// "Reading 120 / 3000" while new files are read.
@@ -386,7 +348,7 @@ struct LibraryView: View {
         case "drive": showingDrive = true
         case "downloads": showingDownloads = true
         case "duplicates": path.append(LibraryRoute.duplicates)
-        case "storage": path.append(LibraryRoute.storage)
+        case "info", "storage": path.append(LibraryRoute.info)
         case "albumpreview": debugPreviewAlbum = target
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.

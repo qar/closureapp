@@ -10,7 +10,7 @@ struct RecentlyDeletedView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackBar(title: "Library")
+                BackBar(title: "Library Info")
                 Text("Recently Deleted")
                     .font(Theme.serif(36))
                     .foregroundStyle(Theme.ink)

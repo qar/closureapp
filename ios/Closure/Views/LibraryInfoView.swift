@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Where the space goes: the library against the whole iPhone, then each album by size.
-struct StorageView: View {
+/// Library Info, opened from the Library header: storage, the file tools (Duplicates,
+/// Recently Deleted), and albums by size. Kept off the Library page, which is for music.
+struct LibraryInfoView: View {
     @Environment(LibraryStore.self) private var library
 
     var body: some View {
@@ -10,13 +11,14 @@ struct StorageView: View {
             VStack(alignment: .leading, spacing: 0) {
                 BackBar(title: "Library")
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Storage")
+                    Text("Library Info")
                         .font(Theme.serif(36))
                         .foregroundStyle(Theme.ink)
                         .padding(.top, 8)
                         .accessibilityAddTraits(.isHeader)
+                    sectionHeader("Storage").padding(.top, 24)
                     if let storage = library.storage {
-                        usage(storage).padding(.top, 24)
+                        usage(storage).padding(.top, 14)
                     } else {
                         ProgressView().tint(Theme.ink).padding(.top, 24)
                     }
@@ -27,13 +29,17 @@ struct StorageView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 16)
 
-                    HStack {
-                        MetaText("Albums by size", size: 10, color: Theme.ink)
-                        Spacer()
-                        MetaText("\(albums.count)", size: 10)
+                    sectionHeader("Files").padding(.top, 36)
+                    VStack(spacing: 0) {
+                        Hairline()
+                        let extra = library.duplicateGroups.reduce(0) { $0 + $1.count - 1 }
+                        linkRow("Duplicates", meta: extra > 0 ? "\(extra) extra" : "None", route: .duplicates)
+                        linkRow("Recently Deleted", meta: "\(library.trashEntries.count)", route: .recentlyDeleted)
                     }
-                    .padding(.top, 36)
-                    .padding(.bottom, 10)
+                    .padding(.top, 10)
+
+                    sectionHeader("Albums by size", count: albums.count).padding(.top, 36)
+                        .padding(.bottom, 10)
                     LazyVStack(spacing: 0) {
                         Hairline()
                         ForEach(albums) { album in
@@ -67,6 +73,36 @@ struct StorageView: View {
         .background(Theme.paper.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .onAppear { library.measureStorage() }
+    }
+
+    private func sectionHeader(_ title: String, count: Int? = nil) -> some View {
+        HStack {
+            MetaText(title, size: 10, color: Theme.ink)
+            Spacer()
+            if let count { MetaText("\(count)", size: 10) }
+        }
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private func linkRow(_ title: String, meta: String, route: LibraryRoute) -> some View {
+        NavigationLink(value: route) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(title)
+                        .font(.system(size: 17))
+                        .foregroundStyle(Theme.ink)
+                    Spacer()
+                    MetaText(meta, size: 10.5)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
+                }
+                .padding(.vertical, 16)
+                Hairline()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// A flat bar (music, everything else, free) and the three figures under it.

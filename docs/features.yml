@@ -295,7 +295,7 @@ features:
     category: library
     priority: P1
     platforms: { ios: done }
-    notes: iOS 完成（2026-11-16）。资料库底部“Storage”入口显示曲库占用；页面有本机用量条（音乐、其他、可用）和三项数字，说明 Recently Deleted 占用及释放时机，说明音乐不在 iCloud 备份里；专辑按大小排序，点开进入专辑。占用按磁盘实际分配大小统计（含封面、歌词），扫描后和 Recently Deleted 变化后在后台重新测量。
+    notes: iOS 完成（2026-11-16）。资料库右上角“…”进入 Library Info 页（Library 页只放音乐，管理入口不放在资料库底部）；页面依次是存储（本机用量条（音乐、其他、可用）和三项数字，说明 Recently Deleted 占用及释放时机，说明音乐不在 iCloud 备份里）、文件（Duplicates、Recently Deleted 入口）、专辑按大小排序，点开进入专辑。占用按磁盘实际分配大小统计（含封面、歌词），扫描后和 Recently Deleted 变化后在后台重新测量。
 
   - id: library.export
     title: 把专辑原样导出到"文件"App

@@ -13,7 +13,7 @@ struct DuplicatesView: View {
         let extra = extraCopies(groups)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                BackBar(title: "Library")
+                BackBar(title: "Library Info")
                 Text("Duplicates")
                     .font(Theme.serif(36))
                     .foregroundStyle(Theme.ink)
