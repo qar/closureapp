@@ -6,6 +6,8 @@ struct NowPlayingView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingSignalPath = false
     @State private var showingQueue = false
+    /// The play mode just picked, named for a moment in place of the format line.
+    @State private var modeNotice: PlayMode?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,6 +71,15 @@ struct NowPlayingView: View {
                 showingSignalPath = arguments[flag + 1] == "signal"
                 showingQueue = arguments[flag + 1] == "queue"
             }
+            // -ClosurePlayMode <mode>: switch to it after 2 s, as a tap would, for screenshots.
+            if let modeFlag = arguments.firstIndex(of: "-ClosurePlayMode"), modeFlag + 1 < arguments.count,
+               let raw = Int(arguments[modeFlag + 1]), let mode = PlayMode(rawValue: raw) {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    player.setPlayMode(mode)
+                    modeNotice = mode
+                }
+            }
             // -ClosureShuffle: turn shuffle on after 3 s and log the order and position.
             if arguments.contains("-ClosureShuffle") {
                 Task {
@@ -99,10 +110,10 @@ struct NowPlayingView: View {
             MetaText(player.contextTitle.isEmpty ? "Now playing" : "Playing from  \(player.contextTitle)")
             Spacer()
             Menu {
-                Picker("Repeat", selection: Binding(get: { player.repeatMode }, set: { player.setRepeatMode($0) })) {
-                    Label("Repeat Off", systemImage: "arrow.right").tag(CLSRepeatMode.off)
-                    Label("Repeat All", systemImage: "repeat").tag(CLSRepeatMode.all)
-                    Label("Repeat One", systemImage: "repeat.1").tag(CLSRepeatMode.one)
+                Picker("Play Mode", selection: Binding(get: { player.playMode }, set: { player.setPlayMode($0) })) {
+                    ForEach(PlayMode.allCases, id: \.self) { mode in
+                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -143,11 +154,12 @@ struct NowPlayingView: View {
 
     private func bottomBar(_ track: Track) -> some View {
         HStack {
-            shuffleButton
+            playModeButton
             Spacer()
             Button { showingSignalPath = true } label: {
-                MetaText("\(track.shortFormat)  ·  \(player.status.resampling ? "Converted" : "No conversion")  ›",
+                MetaText(modeNotice?.title ?? "\(track.shortFormat)  ·  \(player.status.resampling ? "Converted" : "No conversion")  ›",
                          color: Theme.ink, tracking: 1)
+                    .contentTransition(.opacity)
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
             }
@@ -160,24 +172,28 @@ struct NowPlayingView: View {
         .padding(.bottom, 6)
     }
 
-    /// Muted when off; ink with a dot below when on. The dot sits outside the icon's
-    /// box, so the icon lines up with the queue button on the other side.
-    private var shuffleButton: some View {
-        let on = player.isShuffled
-        return Button { player.setShuffle(!on) } label: {
-            Image(systemName: "shuffle")
+    /// Shows the current play mode; each tap moves to the next one and names it.
+    private var playModeButton: some View {
+        let mode = player.playMode
+        return Button {
+            let next = mode.next
+            player.setPlayMode(next)
+            withAnimation(.easeOut(duration: 0.2)) { modeNotice = next }
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                if modeNotice == next { withAnimation(.easeOut(duration: 0.3)) { modeNotice = nil } }
+            }
+        } label: {
+            Image(systemName: mode.systemImage)
                 .font(.system(size: 20))
-                .foregroundStyle(on ? Theme.ink : Theme.muted)
+                .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
-                .overlay(alignment: .bottom) {
-                    Circle().fill(Theme.ink).frame(width: 4, height: 4).opacity(on ? 1 : 0).offset(y: -2)
-                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Shuffle")
-        .accessibilityValue(on ? "On" : "Off")
-        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityLabel("Play mode")
+        .accessibilityValue(mode.title)
+        .accessibilityHint("Changes to \(mode.next.title)")
     }
 
     private func subtitle(_ track: Track) -> String {

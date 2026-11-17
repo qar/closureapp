@@ -2,6 +2,32 @@ import Foundation
 import MediaPlayer
 import Observation
 
+/// The one play mode control, as music apps commonly have it: in order, repeat all,
+/// repeat one, shuffle. Tapping the button moves to the next mode.
+enum PlayMode: Int, CaseIterable {
+    case inOrder, repeatAll, repeatOne, shuffle
+
+    var title: String {
+        switch self {
+        case .inOrder: return "Play in Order"
+        case .repeatAll: return "Repeat All"
+        case .repeatOne: return "Repeat One"
+        case .shuffle: return "Shuffle"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .inOrder: return "arrow.right.to.line"
+        case .repeatAll: return "repeat"
+        case .repeatOne: return "repeat.1"
+        case .shuffle: return "shuffle"
+        }
+    }
+
+    var next: PlayMode { PlayMode(rawValue: (rawValue + 1) % PlayMode.allCases.count)! }
+}
+
 /// Main-thread face of the playback engine for the UI, the lock screen and
 /// Control Center. It holds the queue; the engine holds the audio.
 @MainActor
@@ -17,6 +43,25 @@ final class PlayerModel {
     private(set) var isShuffled = false
     /// Where the queue came from, e.g. an album title. Shown as "Playing from".
     private(set) var contextTitle = ""
+
+    var playMode: PlayMode {
+        if isShuffled { return .shuffle }
+        switch repeatMode {
+        case .off: return .inOrder
+        case .one: return .repeatOne
+        default: return .repeatAll
+        }
+    }
+
+    /// Shuffle plays in random order and loops; the other modes play in order.
+    func setPlayMode(_ mode: PlayMode) {
+        switch mode {
+        case .inOrder: setShuffle(false); setRepeatMode(.off)
+        case .repeatAll: setShuffle(false); setRepeatMode(.all)
+        case .repeatOne: setShuffle(false); setRepeatMode(.one)
+        case .shuffle: setRepeatMode(.all); setShuffle(true)
+        }
+    }
 
     var currentTrack: Track? {
         queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
@@ -69,7 +114,11 @@ final class PlayerModel {
     /// shuffle on, the tapped track plays first and the rest follow in random order.
     func play(_ tracks: [Track], from index: Int, context: String = "", shuffled: Bool? = nil) {
         guard tracks.indices.contains(index) else { return }
-        if let shuffled { isShuffled = shuffled }
+        if let shuffled {
+            isShuffled = shuffled
+            // Shuffle loops, like the Shuffle play mode.
+            if shuffled { setRepeatMode(.all) }
+        }
         originalQueue = tracks
         contextTitle = context
         if shuffled == true {
