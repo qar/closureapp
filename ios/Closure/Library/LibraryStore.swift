@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import ImageIO
 import UIKit
 import Observation
@@ -12,7 +13,13 @@ import Observation
 @MainActor
 @Observable
 final class LibraryStore {
-    private(set) var albums: [Album] = []
+    private(set) var albums: [Album] = [] {
+        didSet { tracksByID = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }) }
+    }
+    /// Every track by its path, for playlists.
+    @ObservationIgnored private(set) var tracksByID: [String: Track] = [:]
+    /// Favorites first, then the user's playlists in the order they were made.
+    private(set) var playlists: [Playlist] = []
     /// False until the database has been read once, so the empty state never flashes.
     private(set) var isLoaded = false
     /// Files read so far and files to read, while a scan reads new or changed files.
@@ -109,6 +116,7 @@ final class LibraryStore {
             let albums = await catalog.load()
             guard let self else { return }
             self.albums = albums
+            self.playlists = await catalog.playlists()
             self.isLoaded = true
             print(String(format: "[Closure] loaded %d tracks in %d albums in %.0f ms",
                          albums.reduce(0) { $0 + $1.tracks.count }, albums.count, Date().timeIntervalSince(started) * 1000))
@@ -278,6 +286,81 @@ final class LibraryStore {
     func clearMissingFiles() {
         missingFiles = []
         FileProblems.save([], to: Self.missingListURL)
+    }
+
+    // MARK: - Playlists
+
+    func playlist(_ id: String) -> Playlist? { playlists.first { $0.id == id } }
+
+    var favorites: Playlist? { playlist(Playlist.favoritesID) }
+
+    func isFavorite(_ track: Track) -> Bool { favorites?.trackIDs.contains(track.id) ?? false }
+
+    @discardableResult
+    func createPlaylist(named name: String, with tracks: [Track] = []) async -> Playlist {
+        let playlist = Playlist(id: UUID().uuidString, name: Self.cleanName(name), trackIDs: Self.unique(tracks.map(\.id)))
+        playlists = await catalog.savePlaylist(playlist)
+        return playlist
+    }
+
+    func renamePlaylist(_ id: String, to name: String) async {
+        guard var playlist = playlist(id), !playlist.isFavorites else { return }
+        playlist.name = Self.cleanName(name)
+        playlists = await catalog.savePlaylist(playlist)
+    }
+
+    func deletePlaylist(_ id: String) async {
+        playlists = await catalog.deletePlaylist(id: id)
+    }
+
+    /// Adds tracks at the end, skipping ones the playlist already has. Returns how many were added.
+    @discardableResult
+    func add(_ tracks: [Track], to id: String) async -> Int {
+        guard var playlist = playlist(id) else { return 0 }
+        let new = Self.unique(tracks.map(\.id)).filter { !playlist.trackIDs.contains($0) }
+        guard !new.isEmpty else { return 0 }
+        playlist.trackIDs += new
+        playlists = await catalog.savePlaylist(playlist)
+        return new.count
+    }
+
+    func toggleFavorite(_ track: Track) async {
+        guard var favorites else { return }
+        if let index = favorites.trackIDs.firstIndex(of: track.id) {
+            favorites.trackIDs.remove(at: index)
+        } else {
+            favorites.trackIDs.append(track.id)
+        }
+        playlists = await catalog.savePlaylist(favorites)
+    }
+
+    /// Removes tracks at positions of the visible list (tracks still in the library).
+    func removeFromPlaylist(_ id: String, at offsets: IndexSet) async {
+        guard var playlist = playlist(id) else { return }
+        let visible = playlist.tracks(in: tracksByID).map(\.id)
+        let removed = Set(offsets.compactMap { visible.indices.contains($0) ? visible[$0] : nil })
+        playlist.trackIDs.removeAll { removed.contains($0) }
+        playlists = await catalog.savePlaylist(playlist)
+    }
+
+    /// Reorders the visible list; tracks now in Recently Deleted keep their place after it.
+    func movePlaylistItems(_ id: String, from source: IndexSet, to destination: Int) async {
+        guard var playlist = playlist(id) else { return }
+        var visible = playlist.tracks(in: tracksByID).map(\.id)
+        visible.move(fromOffsets: source, toOffset: destination)
+        let hidden = playlist.trackIDs.filter { tracksByID[$0] == nil }
+        playlist.trackIDs = visible + hidden
+        playlists = await catalog.savePlaylist(playlist)
+    }
+
+    private static func cleanName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled Playlist" : trimmed
+    }
+
+    private static func unique(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
     }
 
     // MARK: - Album edits

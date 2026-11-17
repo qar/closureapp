@@ -466,8 +466,9 @@ features:
     title: 歌单、歌单文件夹、收藏
     category: library
     priority: P1
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: done, macos: planned }
     why: [reviews-2026-11（歌单不支持文件夹；离线歌单被收费）]
+    notes: iOS 完成（2026-11-16）。资料库新增 Playlists 标签；Favorites 为内置歌单（排第一，不能改名或删除）。歌曲、专辑长按菜单和正在播放页“…”菜单有 Add to Favorites / Remove from Favorites（单曲）和 Add to Playlist…（可在其中新建歌单），已有的歌不重复加。歌单页可播放、随机、改名、删除、Edit Order 拖动排序、左滑移除。数据在 schema 3 的 playlists / playlist_items 表，按歌曲路径记录；移到 Recently Deleted 的歌在歌单里暂时隐藏，恢复后回到原位。尚未做：歌单文件夹。
 
   - id: library.metadata-edit
     title: 在 App 内编辑标签

@@ -7,7 +7,7 @@ import SQLite3
 /// table is the source of truth for metadata; the files keep the layout they were
 /// imported with. Not thread safe: one owner (LibraryCatalog) uses it at a time.
 final class LibraryDatabase {
-    static let schemaVersion = 2
+    static let schemaVersion = 3
 
     enum DatabaseError: Error, CustomStringConvertible {
         case sqlite(String)
@@ -135,6 +135,74 @@ final class LibraryDatabase {
                 ) WITHOUT ROWID;
                 PRAGMA user_version = 2;
                 """)
+        }
+        if version < 3 {
+            // Playlists, with Favorites built in. Items refer to tracks by path.
+            try execute("""
+                CREATE TABLE IF NOT EXISTS playlists (
+                    id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, sort_order INTEGER NOT NULL
+                ) WITHOUT ROWID;
+                CREATE TABLE IF NOT EXISTS playlist_items (
+                    playlist_id TEXT NOT NULL, position INTEGER NOT NULL, track_id TEXT NOT NULL,
+                    PRIMARY KEY (playlist_id, position)
+                ) WITHOUT ROWID;
+                INSERT OR IGNORE INTO playlists (id, name, sort_order) VALUES ('favorites', 'Favorites', 0);
+                PRAGMA user_version = 3;
+                """)
+        }
+    }
+
+    // MARK: - Playlists
+
+    /// Every playlist, Favorites first, then in the order they were made.
+    func allPlaylists() throws -> [Playlist] {
+        var playlists: [Playlist] = []
+        try query("SELECT id, name FROM playlists ORDER BY sort_order, id") { row in
+            playlists.append(Playlist(id: Self.text(row, 0) ?? "", name: Self.text(row, 1) ?? "", trackIDs: []))
+        }
+        var items: [String: [String]] = [:]
+        try query("SELECT playlist_id, track_id FROM playlist_items ORDER BY playlist_id, position") { row in
+            items[Self.text(row, 0) ?? "", default: []].append(Self.text(row, 1) ?? "")
+        }
+        return playlists.map { Playlist(id: $0.id, name: $0.name, trackIDs: items[$0.id] ?? []) }
+    }
+
+    /// Saves a playlist's name and items, replacing what was there.
+    func savePlaylist(_ playlist: Playlist, sortOrder: Int) throws {
+        try transaction {
+            let upsert = try prepare("INSERT INTO playlists (id, name, sort_order) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name")
+            defer { sqlite3_finalize(upsert) }
+            bind(upsert, 1, playlist.id)
+            bind(upsert, 2, playlist.name)
+            sqlite3_bind_int64(upsert, 3, Int64(sortOrder))
+            guard sqlite3_step(upsert) == SQLITE_DONE else { throw error() }
+
+            let clear = try prepare("DELETE FROM playlist_items WHERE playlist_id = ?")
+            defer { sqlite3_finalize(clear) }
+            bind(clear, 1, playlist.id)
+            guard sqlite3_step(clear) == SQLITE_DONE else { throw error() }
+
+            let insert = try prepare("INSERT INTO playlist_items (playlist_id, position, track_id) VALUES (?, ?, ?)")
+            defer { sqlite3_finalize(insert) }
+            for (position, trackID) in playlist.trackIDs.enumerated() {
+                sqlite3_reset(insert)
+                bind(insert, 1, playlist.id)
+                sqlite3_bind_int64(insert, 2, Int64(position))
+                bind(insert, 3, trackID)
+                guard sqlite3_step(insert) == SQLITE_DONE else { throw error() }
+            }
+        }
+    }
+
+    func deletePlaylist(id: String) throws {
+        guard id != Playlist.favoritesID else { return }
+        try transaction {
+            for sql in ["DELETE FROM playlist_items WHERE playlist_id = ?", "DELETE FROM playlists WHERE id = ?"] {
+                let statement = try prepare(sql)
+                defer { sqlite3_finalize(statement) }
+                bind(statement, 1, id)
+                guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
+            }
         }
     }
 

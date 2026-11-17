@@ -136,6 +136,25 @@ actor LibraryCatalog {
         AlbumOverrides.apply(overrides, to: LibraryGrouping.albums(from: Array(tracks.values)))
     }
 
+    // MARK: - Playlists
+
+    func playlists() -> [Playlist] {
+        (try? database?.allPlaylists()) ?? []
+    }
+
+    /// Saves a playlist. New playlists go after the existing ones.
+    func savePlaylist(_ playlist: Playlist) -> [Playlist] {
+        let existing = playlists()
+        let order = existing.firstIndex { $0.id == playlist.id } ?? existing.count
+        try? database?.savePlaylist(playlist, sortOrder: playlist.isFavorites ? 0 : max(1, order))
+        return playlists()
+    }
+
+    func deletePlaylist(id: String) -> [Playlist] {
+        try? database?.deletePlaylist(id: id)
+        return playlists()
+    }
+
     /// Saves an album edit and returns the albums with it applied.
     func setOverride(_ override: AlbumOverride) -> [Album] {
         try? database?.setOverride(override)

@@ -10,12 +10,14 @@ enum LibraryRoute: Hashable {
     case duplicates
     case info
     case fileProblems
+    case playlist(String)
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
     case albums = "Albums"
     case artists = "Artists"
     case folders = "Folders"
+    case playlists = "Playlists"
     var id: String { rawValue }
 }
 
@@ -30,6 +32,8 @@ struct LibraryView: View {
     @State private var showingFinderHelp = false
     @State private var showingDrive = false
     @State private var showingDownloads = false
+    @State private var namingPlaylist = false
+    @State private var newPlaylistName = ""
     @State private var downloadsAfterDrive = false
     @Environment(DriveDownloadManager.self) private var downloads
     @Environment(GoogleDriveAccount.self) private var driveAccount
@@ -37,6 +41,7 @@ struct LibraryView: View {
 #if DEBUG
     @State private var debugImportStarted = false
     @State private var debugPreviewAlbum: Album?
+    @State private var debugAddToPlaylist: [Track]?
 #endif
 
     var body: some View {
@@ -74,9 +79,11 @@ struct LibraryView: View {
                 case .duplicates: DuplicatesView()
                 case .info: LibraryInfoView()
                 case .fileProblems: FileProblemsView()
+                case let .playlist(id): PlaylistView(playlistID: id)
                 }
             }
         }
+        .modifier(AddToPlaylistHost())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if DownloadStrip.isVisible(downloads) {
@@ -125,6 +132,17 @@ struct LibraryView: View {
         } message: { notice in
             Text(Self.noticeText(notice))
         }
+        .alert("New Playlist", isPresented: $namingPlaylist) {
+            TextField("Name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") {
+                let name = newPlaylistName
+                Task {
+                    let playlist = await library.createPlaylist(named: name)
+                    path.append(LibraryRoute.playlist(playlist.id))
+                }
+            }
+        }
         .alert("Google Drive", isPresented: Binding(get: { library.driveError != nil }, set: { if !$0 { library.driveError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -132,6 +150,11 @@ struct LibraryView: View {
         }
 #if DEBUG
         .task(id: library.albums.count) { runDebugLaunchArguments() }
+        .sheet(isPresented: Binding(get: { debugAddToPlaylist != nil }, set: { if !$0 { debugAddToPlaylist = nil } })) {
+            AddToPlaylistView(tracks: debugAddToPlaylist ?? [])
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Theme.paper)
+        }
         .overlay {
             // -ClosureScreen albumpreview: the long-press card on a dimmed library.
             if let album = debugPreviewAlbum {
@@ -209,6 +232,19 @@ struct LibraryView: View {
             let artists = artistsList
             countRow(left: "\(artists.count) artists", right: "A–Z")
             listRows(artists.map { ListRow(title: $0.name, meta: "\($0.albums) album\($0.albums == 1 ? "" : "s") · \($0.tracks) track\($0.tracks == 1 ? "" : "s")", route: .artist($0.name)) })
+        case .playlists:
+            countRow(left: "\(library.playlists.count) playlists", right: "")
+            TextAction(title: "New Playlist", systemImage: "plus") {
+                newPlaylistName = ""
+                namingPlaylist = true
+            }
+            .padding(.horizontal, Theme.horizontalMargin)
+            .padding(.top, -12)
+            .padding(.bottom, 12)
+            listRows(library.playlists.map { playlist in
+                let count = playlist.tracks(in: library.tracksByID).count
+                return ListRow(title: playlist.name, meta: "\(count) track\(count == 1 ? "" : "s")", route: .playlist(playlist.id))
+            })
         case .folders:
             let folders = foldersList
             countRow(left: "\(folders.count) folders", right: "A–Z")
@@ -334,6 +370,17 @@ struct LibraryView: View {
             Task { await library.importItems([url]) }
             return
         }
+        // -ClosurePlaylistDemo: favorites and one playlist from the first albums, once.
+        if arguments.contains("-ClosurePlaylistDemo"), library.playlists.count == 1, library.albums.count > 2 {
+            let albums = library.albums
+            Task {
+                await library.add(Array(albums[1].tracks.prefix(3)) + Array(albums[2].tracks.prefix(2)), to: Playlist.favoritesID)
+                await library.createPlaylist(named: "Late Drives", with: Array(albums[1].tracks) + Array(albums[0].tracks.prefix(2)))
+            }
+        }
+        if arguments.contains("-ClosureAddToPlaylist"), debugAddToPlaylist == nil, let album = library.albums.dropFirst().first {
+            debugAddToPlaylist = Array(album.tracks.prefix(1))
+        }
         guard let flag = arguments.firstIndex(of: "-ClosureScreen"), flag + 1 < arguments.count,
               player.currentTrack == nil, let album = library.albums.first else { return }
         let screen = arguments[flag + 1]
@@ -360,6 +407,8 @@ struct LibraryView: View {
         case "nowplaying", "signal", "queue", "lyrics": showingNowPlaying = true
         case "artists": tab = .artists
         case "folders": tab = .folders
+        case "playlists": tab = .playlists
+        case "playlist": if let second = library.playlists.dropFirst().first { path.append(LibraryRoute.playlist(second.id)) }
         case "search": showingSearch = true
         case "drive": showingDrive = true
         case "downloads": showingDownloads = true
@@ -419,7 +468,7 @@ struct AlbumGrid: View {
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 .contextMenu {
-                    QueueMenuItems(tracks: album.tracks, context: album.title)
+                    TrackMenuItems(tracks: album.tracks, context: album.title)
                 } preview: {
                     AlbumMenuPreview(album: album)
                 }

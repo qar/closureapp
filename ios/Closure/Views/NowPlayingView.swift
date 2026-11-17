@@ -77,6 +77,7 @@ struct NowPlayingView: View {
             }
         }
         .background(Theme.paper.ignoresSafeArea())
+        .modifier(AddToPlaylistHost())
         .sheet(isPresented: $showingSignalPath) {
             SignalPathView()
                 .presentationDetents([.fraction(0.8), .large])
@@ -144,6 +145,10 @@ struct NowPlayingView: View {
             MetaText(player.contextTitle.isEmpty ? "Now playing" : "Playing from  \(player.contextTitle)")
             Spacer()
             Menu {
+                if let track = player.currentTrack {
+                    TrackMenuItems(tracks: [track], context: player.contextTitle)
+                    Divider()
+                }
                 Picker("Play Mode", selection: Binding(get: { player.playMode }, set: { player.setPlayMode($0) })) {
                     ForEach(PlayMode.allCases, id: \.self) { mode in
                         Label(mode.title, systemImage: mode.systemImage).tag(mode)
