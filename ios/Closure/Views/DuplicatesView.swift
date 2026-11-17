@@ -51,7 +51,7 @@ struct DuplicatesView: View {
         .confirmationDialog("Move \(extra.count) extra cop\(extra.count == 1 ? "y" : "ies") to Recently Deleted?",
                             isPresented: $confirming, titleVisibility: .visible) {
             Button("Move to Recently Deleted", role: .destructive) {
-                Task { await library.moveDuplicatesToTrash(extra) }
+                Task { await library.moveFilesToTrash(extra) }
             }
         } message: {
             Text("One copy of each file stays in the library.")

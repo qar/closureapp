@@ -97,3 +97,38 @@ final class StorageSummaryTests: XCTestCase {
         XCTAssertEqual(shares.free, 0.5, accuracy: 1e-9)
     }
 }
+
+final class FileProblemsTests: XCTestCase {
+    private func track(_ id: String, codec: String = "FLAC") -> Track {
+        Track(id: id, title: id, artist: "A", album: "B", trackNumber: 1, duration: 1, codec: codec,
+              sampleRate: 44100, bitDepth: 16, fileSize: 1, modified: Date(timeIntervalSince1970: 0),
+              year: nil, albumArtist: nil, discNumber: nil, composer: nil, genre: nil, isCompilation: nil)
+    }
+
+    func testTrashedFilesAreNotMissing() {
+        let missing = FileProblems.missing(removed: [track("A/1.flac"), track("A/2.flac")], trashedPaths: ["A/1.flac"])
+        XCTAssertEqual(missing.map(\.id), ["A/2.flac"])
+    }
+
+    func testMergeKeepsNewestFirstWithoutRepeats() {
+        let now = Date()
+        let old = [MissingFile(id: "x", title: "x", artist: "", album: "", noticedAt: now)]
+        let new = [MissingFile(id: "y", title: "y", artist: "", album: "", noticedAt: now),
+                   MissingFile(id: "x", title: "x", artist: "", album: "", noticedAt: now)]
+        XCTAssertEqual(FileProblems.merge(new, into: old).map(\.id), ["y", "x"])
+    }
+
+    func testSaveLoadAndClear() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("missing-\(UUID().uuidString).json")
+        let files = [MissingFile(id: "a", title: "A", artist: "", album: "", noticedAt: Date(timeIntervalSince1970: 1))]
+        FileProblems.save(files, to: url)
+        XCTAssertEqual(FileProblems.load(from: url), files)
+        FileProblems.save([], to: url)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testUnreadableIsTheUnsupportedCodec() {
+        XCTAssertTrue(track("a", codec: "Unsupported").isUnreadable)
+        XCTAssertFalse(track("a").isUnreadable)
+    }
+}

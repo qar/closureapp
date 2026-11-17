@@ -53,6 +53,10 @@ actor LibraryCatalog {
 
     private let database: LibraryDatabase?
     private var tracks: [String: Track] = [:]
+    /// From the last scan: tracks whose files went away, and files read that the engine
+    /// could not open.
+    private(set) var lastRemoved: [Track] = []
+    private(set) var lastNewlyUnreadable: [Track] = []
     private static let readers = 4
     private static let publishInterval: TimeInterval = 1.0
 
@@ -76,6 +80,8 @@ actor LibraryCatalog {
         let (onDisk, urls) = Self.listAudioFiles(under: root)
         let known = tracks.mapValues { LibraryDatabase.Stamp(size: $0.fileSize, modified: $0.modified.timeIntervalSince1970) }
         let diff = ScanDiff.compute(onDisk: onDisk, inDatabase: known)
+        lastRemoved = diff.removed.compactMap { tracks[$0] }
+        lastNewlyUnreadable = []
 
         if !diff.removed.isEmpty {
             try? database?.delete(ids: diff.removed)
@@ -115,7 +121,11 @@ actor LibraryCatalog {
     private func commit(_ batch: inout [Track]) {
         guard !batch.isEmpty else { return }
         try? database?.upsert(batch)
-        for track in batch { tracks[track.id] = track }
+        for track in batch {
+            // Newly unreadable only: a file already known as unreadable is not news.
+            if track.isUnreadable, tracks[track.id]?.isUnreadable != true { lastNewlyUnreadable.append(track) }
+            tracks[track.id] = track
+        }
         batch.removeAll(keepingCapacity: true)
     }
 

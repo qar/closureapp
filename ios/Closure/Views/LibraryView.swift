@@ -9,6 +9,7 @@ enum LibraryRoute: Hashable {
     case recentlyDeleted
     case duplicates
     case info
+    case fileProblems
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
@@ -72,6 +73,7 @@ struct LibraryView: View {
                 case .recentlyDeleted: RecentlyDeletedView()
                 case .duplicates: DuplicatesView()
                 case .info: LibraryInfoView()
+                case .fileProblems: FileProblemsView()
                 }
             }
         }
@@ -115,6 +117,13 @@ struct LibraryView: View {
             DownloadsView()
                 .presentationBackground(Theme.paper)
                 .presentationDragIndicator(.visible)
+        }
+        .alert("Some files need attention", isPresented: Binding(get: { library.fileNotice != nil }, set: { if !$0 { library.fileNotice = nil } }),
+               presenting: library.fileNotice) { _ in
+            Button("Show") { path.append(LibraryRoute.fileProblems) }
+            Button("OK", role: .cancel) {}
+        } message: { notice in
+            Text(Self.noticeText(notice))
         }
         .alert("Google Drive", isPresented: Binding(get: { library.driveError != nil }, set: { if !$0 { library.driveError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -205,6 +214,13 @@ struct LibraryView: View {
             countRow(left: "\(folders.count) folders", right: "A–Z")
             listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) track\($0.tracks == 1 ? "" : "s")\(parentPath($0.path))", route: .folder($0.path)) })
         }
+    }
+
+    static func noticeText(_ notice: LibraryStore.FileNotice) -> String {
+        var parts: [String] = []
+        if notice.unreadable > 0 { parts.append("\(notice.unreadable) file\(notice.unreadable == 1 ? "" : "s") can't be read") }
+        if notice.missing > 0 { parts.append("\(notice.missing) file\(notice.missing == 1 ? " is" : "s are") missing") }
+        return parts.joined(separator: " and ") + ". You can see them in Library Info."
     }
 
     /// "Reading 120 / 3000" while new files are read.
@@ -349,6 +365,7 @@ struct LibraryView: View {
         case "downloads": showingDownloads = true
         case "duplicates": path.append(LibraryRoute.duplicates)
         case "info", "storage": path.append(LibraryRoute.info)
+        case "problems": path.append(LibraryRoute.fileProblems)
         case "albumpreview": debugPreviewAlbum = target
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.

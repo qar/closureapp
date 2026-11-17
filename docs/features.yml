@@ -377,13 +377,13 @@ features:
     title: 文件不丢失，存储占用清楚
     category: library
     priority: P0
-    platforms: { ios: partial, macos: n/a }
+    platforms: { ios: done, macos: n/a }
     why: [reviews-2026-11（"离线文件凭空消失"，Evermusic、Flacbox）]
     acceptance:
       - App 更新后曲库完整，文件路径全部以相对路径保存。
       - 启动时发现缺失或损坏的文件，并告诉用户。
       - 设置中显示曲库占用空间。删除文件前要确认。
-    notes: 曲库目录已排除在 iCloud 设备备份之外。存储页显示占用并说明音乐不在 iCloud 备份里（2026-11-16）；删除前确认、路径全部相对已实现。尚未做：启动时发现损坏的文件并告诉用户（缺失的文件扫描时会从曲库移除，但没有提示）。
+    notes: iOS 完成（2026-11-16）。曲库目录排除在 iCloud 设备备份之外；Library Info 页显示占用并说明音乐不在 iCloud 备份里；删除前确认；路径全部相对。每次扫描后检查两类问题：引擎打不开的文件（不支持或损坏），以及不是用户删除的、从磁盘上消失的文件（移到 Recently Deleted 的不算）。首次发现时弹一次提示，可跳到 File Problems 页；读不了的文件可移到 Recently Deleted，缺失清单保存到用户清除为止。限制：只在读文件头时判断能否打开，文件头正常但中途截断的文件要到播放时才会报错。
 
   - id: library.database
     title: 用数据库保存曲库，替代 JSON 索引

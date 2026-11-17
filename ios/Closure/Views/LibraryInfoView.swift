@@ -35,6 +35,8 @@ struct LibraryInfoView: View {
                         let extra = library.duplicateGroups.reduce(0) { $0 + $1.count - 1 }
                         linkRow("Duplicates", meta: extra > 0 ? "\(extra) extra" : "None", route: .duplicates)
                         linkRow("Recently Deleted", meta: "\(library.trashEntries.count)", route: .recentlyDeleted)
+                        let problems = library.unreadableTracks.count + library.missingFiles.count
+                        linkRow("File Problems", meta: problems > 0 ? "\(problems)" : "None", route: .fileProblems)
                     }
                     .padding(.top, 10)
 

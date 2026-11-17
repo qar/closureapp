@@ -24,6 +24,12 @@ final class LibraryStore {
     private(set) var trashEntries: [TrashStore.Entry] = []
     /// Library audio files with identical content (SHA-256), one group per content.
     private(set) var duplicateGroups: [[String]] = []
+    /// Tracks whose files went missing without being deleted, until the user clears them.
+    private(set) var missingFiles: [MissingFile] = []
+    /// Problems found by the last scan, to tell the user once.
+    var fileNotice: FileNotice?
+    /// Tracks the engine cannot read (unsupported or damaged files).
+    var unreadableTracks: [Track] { albums.flatMap(\.tracks).filter(\.isUnreadable) }
     /// Space used by the library and Recently Deleted, and free space. Measured after
     /// each scan and after Recently Deleted changes.
     private(set) var storage: StorageSummary?
@@ -60,9 +66,21 @@ final class LibraryStore {
         return TrashStore(libraryRoot: LibraryStore.libraryFolder, trashRoot: folder)
     }()
 
+    struct FileNotice: Identifiable, Equatable {
+        let id = UUID()
+        var unreadable: Int
+        var missing: Int
+    }
+
+    private static var missingListURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Library/missing-files.json")
+    }
+
     init() {
         prepareFolders()
         importer.contentIndex = contentIndex
+        missingFiles = FileProblems.load(from: Self.missingListURL)
 #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if let flag = arguments.firstIndex(of: "-ClosureFakeFreeSpace"), flag + 1 < arguments.count,
@@ -179,8 +197,9 @@ final class LibraryStore {
         measureStorage()
     }
 
-    /// Moves extra copies to Recently Deleted. `paths` are library-relative.
-    func moveDuplicatesToTrash(_ paths: [String]) async {
+    /// Moves files to Recently Deleted (extra copies, unreadable files). `paths` are
+    /// library-relative.
+    func moveFilesToTrash(_ paths: [String]) async {
         let tracks = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for path in paths {
             let track = tracks[path]
@@ -229,11 +248,39 @@ final class LibraryStore {
             }
             self.albums = albums
             print(String(format: "[Closure] scan finished in %.0f ms, %d files read", Date().timeIntervalSince(started) * 1000, scanProgress?.total ?? 0))
+            await noteFileProblems()
             scanProgress = nil
             await ArtworkStore.shared.forgetMisses()
         } while rescanRequested
         findDuplicates()
         measureStorage()
+    }
+
+    /// Records files that went missing (not deleted by the user) and tells the user
+    /// about problems this scan found for the first time.
+    private func noteFileProblems() async {
+        let removed = await catalog.lastRemoved
+        let unreadable = await catalog.lastNewlyUnreadable
+        let trashed = Set(trash.entries.map(\.originalPath))
+        let missing = FileProblems.missing(removed: removed, trashedPaths: trashed)
+        if !missing.isEmpty {
+            missingFiles = FileProblems.merge(missing, into: missingFiles)
+            FileProblems.save(missingFiles, to: Self.missingListURL)
+        }
+        if !missing.isEmpty || !unreadable.isEmpty {
+            print("[Closure] file problems: \(unreadable.count) unreadable, \(missing.count) missing")
+            fileNotice = FileNotice(unreadable: unreadable.count, missing: missing.count)
+        }
+    }
+
+    func clearMissingFiles() {
+        missingFiles = []
+        FileProblems.save([], to: Self.missingListURL)
+    }
+
+    /// Moves unreadable tracks to Recently Deleted.
+    func moveUnreadableToTrash() async {
+        await moveFilesToTrash(unreadableTracks.map(\.id))
     }
 
     /// Measures the library and Recently Deleted folders in the background.
