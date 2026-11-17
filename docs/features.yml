@@ -492,7 +492,7 @@ features:
     priority: P1
     platforms: { ios: done, macos: done }
     why: [forums-2026-11]
-    notes: iOS 完成（2026-11-16）。正在播放页点封面切换歌词，再点切回，布局不动。来源依次是同名 .lrc 文件（随专辑导入）和标签（ID3 USLT、MP4 ©lyr、Vorbis LYRICS）。LRC 支持一行多个时间戳、[offset]、逐字时间戳（忽略）；.lrc 编码依次识别 UTF-8、UTF-16、GBK/Big5。逐行同步：当前句墨色并滚动到中间，点某句从该处播放；无时间戳的按纯文本显示。中文用系统字体显示，待定中文字体（见设计待定项）。
+    notes: iOS 完成（2026-11-16）。正在播放页点封面切换歌词，再点切回，布局不动。来源依次是同名 .lrc 文件（随专辑导入）和标签（ID3 USLT、MP4 ©lyr、Vorbis LYRICS）。LRC 支持一行多个时间戳、[offset]、逐字时间戳（忽略）；.lrc 编码依次识别 UTF-8、UTF-16、GBK/Big5。逐行同步：当前句墨色并滚动到中间，点某句从该句前 1 秒开始播放；手动滚动时暂停跟随，停下 3 秒后回到当前句；无时间戳的按纯文本显示。中文用系统字体显示，待定中文字体（见设计待定项）。
 
   - id: lyrics.online
     title: 在线匹配歌词（LRCLIB）

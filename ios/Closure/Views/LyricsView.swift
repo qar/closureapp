@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Lyrics in place of the cover on Now Playing. Timed lyrics follow the music: the
-/// line being sung is in ink, the rest are faint, and tapping a line plays from it.
+/// line being sung is in ink, the rest are faint, and tapping a line plays from a
+/// second before it.
 /// Tapping anywhere else goes back to the cover.
 struct LyricsView: View {
     let lyrics: Lyrics?
@@ -20,6 +21,9 @@ struct LyricsView: View {
     /// After the reader scrolls away, the lyrics go back to the current line this long
     /// after the scrolling stops.
     private static let resumeDelay: Duration = .seconds(3)
+    /// Tapping a line starts this much before it, so the line comes in naturally
+    /// rather than mid-breath.
+    static let leadIn: Double = 1
     @Environment(PlayerModel.self) private var player
 
     var body: some View {
@@ -113,7 +117,7 @@ struct LyricsView: View {
     private func lineView(_ line: Lyrics.Line, isCurrent: Bool, synced: Bool) -> some View {
         if synced, let time = line.time {
             Button {
-                player.seek(to: time)
+                player.seek(to: max(0, time - Self.leadIn))
                 // Playing from a line follows the lyrics again at once.
                 resumeTask?.cancel()
                 followPaused = false
@@ -128,7 +132,7 @@ struct LyricsView: View {
                     .animation(.easeOut(duration: 0.2), value: isCurrent)
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Plays from this line")
+            .accessibilityHint("Plays from just before this line")
         } else {
             Text(line.text.isEmpty ? " " : line.text)
                 .font(.system(size: 17))
