@@ -11,6 +11,15 @@ struct LyricsView: View {
     let onClose: () -> Void
     @State private var finding = false
     @State private var notFound = false
+    /// True while the reader scrolls the lyrics, and for a moment after.
+    @State private var followPaused = false
+    @State private var resumeTask: Task<Void, Never>?
+    /// Changing it scrolls back to the line being sung.
+    @State private var recenter = 0
+
+    /// After the reader scrolls away, the lyrics go back to the current line this long
+    /// after the scrolling stops.
+    private static let resumeDelay: Duration = .seconds(3)
     @Environment(PlayerModel.self) private var player
 
     var body: some View {
@@ -70,9 +79,14 @@ struct LyricsView: View {
                                        .init(color: .black, location: 0.88), .init(color: .clear, location: 1)],
                                startPoint: .top, endPoint: .bottom)
             }
+            .modifier(UserScrollObserver(onStart: pauseFollowing, onEnd: resumeFollowingSoon))
             .onChange(of: current) { _, index in
-                guard let index else { return }
+                guard let index, !followPaused else { return }
                 withAnimation(.easeInOut(duration: 0.35)) { reader.scrollTo(index, anchor: .center) }
+            }
+            .onChange(of: recenter) {
+                guard let current else { return }
+                withAnimation(.easeInOut(duration: 0.5)) { reader.scrollTo(current, anchor: .center) }
             }
             .onAppear {
                 if let current { reader.scrollTo(current, anchor: .center) }
@@ -80,10 +94,31 @@ struct LyricsView: View {
         }
     }
 
+    private func pauseFollowing() {
+        resumeTask?.cancel()
+        followPaused = true
+    }
+
+    private func resumeFollowingSoon() {
+        resumeTask?.cancel()
+        resumeTask = Task {
+            try? await Task.sleep(for: Self.resumeDelay)
+            guard !Task.isCancelled else { return }
+            followPaused = false
+            recenter += 1
+        }
+    }
+
     @ViewBuilder
     private func lineView(_ line: Lyrics.Line, isCurrent: Bool, synced: Bool) -> some View {
         if synced, let time = line.time {
-            Button { player.seek(to: time) } label: {
+            Button {
+                player.seek(to: time)
+                // Playing from a line follows the lyrics again at once.
+                resumeTask?.cancel()
+                followPaused = false
+                recenter += 1
+            } label: {
                 Text(line.text)
                     .font(Theme.serif(26, relativeTo: .title2))
                     .foregroundStyle(isCurrent ? Theme.ink : Theme.muted.opacity(0.55))
@@ -100,6 +135,29 @@ struct LyricsView: View {
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Tells when the reader starts and stops scrolling (not scrolling done in code). iOS 18
+/// reports the scroll phase; iOS 17 falls back to the drag itself.
+private struct UserScrollObserver: ViewModifier {
+    let onStart: () -> Void
+    let onEnd: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { old, new in
+                if new == .interacting {
+                    onStart()
+                } else if new == .idle, old == .interacting || old == .decelerating {
+                    onEnd()
+                }
+            }
+        } else {
+            content.simultaneousGesture(DragGesture(minimumDistance: 6)
+                .onChanged { _ in onStart() }
+                .onEnded { _ in onEnd() })
         }
     }
 }
