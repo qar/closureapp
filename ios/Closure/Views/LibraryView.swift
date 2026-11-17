@@ -34,6 +34,7 @@ struct LibraryView: View {
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 #if DEBUG
     @State private var debugImportStarted = false
+    @State private var debugPreviewAlbum: Album?
 #endif
 
     var body: some View {
@@ -122,6 +123,13 @@ struct LibraryView: View {
         }
 #if DEBUG
         .task(id: library.albums.count) { runDebugLaunchArguments() }
+        .overlay {
+            // -ClosureScreen albumpreview: the long-press card on a dimmed library.
+            if let album = debugPreviewAlbum {
+                Color.black.opacity(0.2).ignoresSafeArea()
+                AlbumMenuPreview(album: album).clipShape(RoundedRectangle(cornerRadius: 13))
+            }
+        }
 #endif
     }
 
@@ -394,6 +402,7 @@ struct LibraryView: View {
         case "drive": showingDrive = true
         case "downloads": showingDownloads = true
         case "duplicates": path.append(LibraryRoute.duplicates)
+        case "albumpreview": debugPreviewAlbum = target
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.
             Task {
@@ -426,7 +435,8 @@ struct AlbumGrid: View {
                 NavigationLink(value: LibraryRoute.album(album.id)) {
                     VStack(alignment: .leading, spacing: 0) {
                         ArtworkView(request: album.artworkRequest, title: album.title, pixelSize: 520)
-                            .shadow(color: .black.opacity(0.08), radius: 7, y: 6)
+                            // Printed, not floating: a hairline edge, no shadow (as on the album page).
+                            .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
                         Text(album.title)
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(Theme.ink)
@@ -444,9 +454,41 @@ struct AlbumGrid: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
-                .contextMenu { QueueMenuItems(tracks: album.tracks, context: album.title) }
+                .contextMenu {
+                    QueueMenuItems(tracks: album.tracks, context: album.title)
+                } preview: {
+                    AlbumMenuPreview(album: album)
+                }
             }
         }
         .padding(.horizontal, Theme.horizontalMargin)
+    }
+}
+
+/// What a long press on an album lifts: the cover with its title and artist on paper,
+/// with even margins, so the system's rounded preview never cuts the cover or the text.
+struct AlbumMenuPreview: View {
+    let album: Album
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ArtworkView(request: album.artworkRequest, title: album.title, pixelSize: 600)
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
+            Text(album.title)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(2)
+                .padding(.top, 14)
+            Text(album.artist)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.muted)
+                .lineLimit(1)
+                .padding(.top, 2)
+            MetaText(album.format, size: 9.5, tracking: 1)
+                .padding(.top, 8)
+        }
+        .padding(16)
+        .frame(width: 280)
+        .background(Theme.paper)
     }
 }

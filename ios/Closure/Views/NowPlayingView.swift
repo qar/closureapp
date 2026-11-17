@@ -14,7 +14,7 @@ struct NowPlayingView: View {
             topBar
             if let track = player.currentTrack {
                 ArtworkView(request: track.artworkRequest, title: track.album, pixelSize: 1100)
-                    .shadow(color: .black.opacity(0.10), radius: 14, y: 14)
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
                     .padding(.horizontal, 28)
                     .padding(.top, 12)
 
