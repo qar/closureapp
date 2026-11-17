@@ -277,7 +277,7 @@ features:
     priority: P1
     platforms: { ios: partial, macos: partial }
     why: [reviews-2026-11（不能按文件夹浏览，古典乐用户尤其需要）]
-    notes: iOS 是平铺的文件夹列表，还不是层级浏览。
+    notes: iOS（2026-11-16）：Folders 从资料库标签移到 Library Info → Folders（资料库只留 Albums、Artists、Playlists）。列出每个含音频的文件夹（嵌套的显示上级路径），点开按文件名列出曲目。尚未做：逐层展开的目录树。
 
   - id: library.trash
     title: 最近删除

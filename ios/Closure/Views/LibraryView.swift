@@ -11,12 +11,12 @@ enum LibraryRoute: Hashable {
     case info
     case fileProblems
     case playlist(String)
+    case folders
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
     case albums = "Albums"
     case artists = "Artists"
-    case folders = "Folders"
     case playlists = "Playlists"
     var id: String { rawValue }
 }
@@ -80,6 +80,7 @@ struct LibraryView: View {
                 case .info: LibraryInfoView()
                 case .fileProblems: FileProblemsView()
                 case let .playlist(id): PlaylistView(playlistID: id)
+                case .folders: FoldersView()
                 }
             }
         }
@@ -245,10 +246,6 @@ struct LibraryView: View {
                 let count = playlist.tracks(in: library.tracksByID).count
                 return ListRow(title: playlist.name, meta: "\(count) track\(count == 1 ? "" : "s")", route: .playlist(playlist.id))
             })
-        case .folders:
-            let folders = foldersList
-            countRow(left: "\(folders.count) folders", right: "A–Z")
-            listRows(folders.map { ListRow(title: displayName($0.path), meta: "\($0.tracks) track\($0.tracks == 1 ? "" : "s")\(parentPath($0.path))", route: .folder($0.path)) })
         }
     }
 
@@ -344,21 +341,6 @@ struct LibraryView: View {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    private var foldersList: [(path: String, tracks: Int)] {
-        Dictionary(grouping: library.albums.flatMap(\.tracks), by: \.folder)
-            .map { ($0.key, $0.value.count) }
-            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
-    }
-
-    private func displayName(_ folder: String) -> String {
-        folder.split(separator: "/").last.map(String.init) ?? "Library"
-    }
-
-    private func parentPath(_ folder: String) -> String {
-        let parts = folder.split(separator: "/").dropLast()
-        return parts.isEmpty ? "" : " · " + parts.joined(separator: "/")
-    }
-
 #if DEBUG
     /// Simulator checks without taps. -ClosureScreen accepts: album, nowplaying,
     /// signal, queue, import, artists, folders, search.
@@ -406,7 +388,7 @@ struct LibraryView: View {
         case "album": path.append(LibraryRoute.album(target.id))
         case "nowplaying", "signal", "queue", "lyrics": showingNowPlaying = true
         case "artists": tab = .artists
-        case "folders": tab = .folders
+        case "folders": path.append(LibraryRoute.folders)
         case "playlists": tab = .playlists
         case "playlist": if let second = library.playlists.dropFirst().first { path.append(LibraryRoute.playlist(second.id)) }
         case "search": showingSearch = true
