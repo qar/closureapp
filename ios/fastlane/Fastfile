@@ -5,9 +5,11 @@ platform :ios do
   # reserves the name. Apple offers no API for creating apps, so this signs in with
   # the Apple ID and asks for the password and a two-factor code.
   desc "Create the Papermoon app record on App Store Connect"
-  lane :create_app do
+  # "Papermoon" alone is taken on App Store Connect (2026-11-17); the brand stays
+  # Papermoon with a descriptive suffix. Try another with: fastlane create_app name:"Papermoon Player"
+  lane :create_app do |options|
     produce(
-      app_name: "Papermoon",
+      app_name: options[:name] || "Papermoon Music",
       language: "en-US",
       sku: "papermoon-ios",
       app_version: "0.1",
