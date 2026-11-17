@@ -8,6 +8,7 @@ enum LibraryRoute: Hashable {
     case folder(String)
     case recentlyDeleted
     case duplicates
+    case storage
 }
 
 enum LibraryTab: String, CaseIterable, Identifiable {
@@ -56,8 +57,7 @@ struct LibraryView: View {
                             header
                             tabBar
                             content
-                            duplicatesLink
-                            recentlyDeletedLink
+                            footerLinks
                         }
                         .padding(.bottom, 32)
                     }
@@ -72,6 +72,7 @@ struct LibraryView: View {
                 case let .folder(folder): FolderView(folder: folder)
                 case .recentlyDeleted: RecentlyDeletedView()
                 case .duplicates: DuplicatesView()
+                case .storage: StorageView()
                 }
             }
         }
@@ -205,60 +206,43 @@ struct LibraryView: View {
         }
     }
 
-    /// Shown only when the library has files with identical content.
-    @ViewBuilder
-    private var duplicatesLink: some View {
+    /// Storage, then Duplicates and Recently Deleted when they have something.
+    private var footerLinks: some View {
         let extra = library.duplicateGroups.reduce(0) { $0 + $1.count - 1 }
-        if extra > 0 {
-            NavigationLink(value: LibraryRoute.duplicates) {
-                VStack(spacing: 0) {
-                    Hairline()
-                    HStack {
-                        Text("Duplicates")
-                            .font(.system(size: 17))
-                            .foregroundStyle(Theme.ink)
-                        Spacer()
-                        MetaText("\(extra) extra", size: 10.5)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    .padding(.vertical, 16)
-                }
-                .contentShape(Rectangle())
+        return VStack(spacing: 0) {
+            Hairline()
+            footerLink("Storage", meta: library.storage.map { ByteCountFormatter.string(fromByteCount: $0.music, countStyle: .file) } ?? "",
+                       route: .storage)
+            if extra > 0 {
+                footerLink("Duplicates", meta: "\(extra) extra", route: .duplicates)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, Theme.horizontalMargin)
-            .padding(.top, 40)
+            if !library.trashEntries.isEmpty {
+                footerLink("Recently Deleted", meta: "\(library.trashEntries.count)", route: .recentlyDeleted)
+            }
         }
+        .padding(.horizontal, Theme.horizontalMargin)
+        .padding(.top, 40)
     }
 
-    /// Shown only when something is in Recently Deleted.
-    @ViewBuilder
-    private var recentlyDeletedLink: some View {
-        if !library.trashEntries.isEmpty {
-            NavigationLink(value: LibraryRoute.recentlyDeleted) {
-                VStack(spacing: 0) {
-                    Hairline()
-                    HStack {
-                        Text("Recently Deleted")
-                            .font(.system(size: 17))
-                            .foregroundStyle(Theme.ink)
-                        Spacer()
-                        MetaText("\(library.trashEntries.count)", size: 10.5)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.muted)
-                    }
-                    .padding(.vertical, 16)
-                    Hairline()
+    private func footerLink(_ title: String, meta: String, route: LibraryRoute) -> some View {
+        NavigationLink(value: route) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(title)
+                        .font(.system(size: 17))
+                        .foregroundStyle(Theme.ink)
+                    Spacer()
+                    MetaText(meta, size: 10.5)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.muted)
                 }
-                .contentShape(Rectangle())
+                .padding(.vertical, 16)
+                Hairline()
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, Theme.horizontalMargin)
-            .padding(.top, library.duplicateGroups.isEmpty ? 40 : 0)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     /// "Reading 120 / 3000" while new files are read.
@@ -402,6 +386,7 @@ struct LibraryView: View {
         case "drive": showingDrive = true
         case "downloads": showingDownloads = true
         case "duplicates": path.append(LibraryRoute.duplicates)
+        case "storage": path.append(LibraryRoute.storage)
         case "albumpreview": debugPreviewAlbum = target
         case "trash":
             // Deletes the second track of the target album, then opens Recently Deleted.

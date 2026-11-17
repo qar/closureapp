@@ -66,6 +66,7 @@ targets:
       - path: Closure/Library/DriveDownloadManager.swift
       - path: Closure/Library/ContentIndex.swift
       - path: Closure/Library/PlaybackState.swift
+      - path: Closure/Library/StorageSummary.swift
     dependencies:
       - sdk: libsqlite3.tbd
     settings:

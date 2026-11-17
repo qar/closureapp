@@ -24,6 +24,9 @@ final class LibraryStore {
     private(set) var trashEntries: [TrashStore.Entry] = []
     /// Library audio files with identical content (SHA-256), one group per content.
     private(set) var duplicateGroups: [[String]] = []
+    /// Space used by the library and Recently Deleted, and free space. Measured after
+    /// each scan and after Recently Deleted changes.
+    private(set) var storage: StorageSummary?
 
     nonisolated static var libraryFolder: URL { LibraryPaths.musicFolder }
 
@@ -44,9 +47,12 @@ final class LibraryStore {
         cacheURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Library/content-hashes.json"))
     @ObservationIgnored private var duplicateTask: Task<Void, Never>?
-    @ObservationIgnored private let trash: TrashStore = {
-        var folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    nonisolated static var trashFolder: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Trash", isDirectory: true)
+    }
+    @ObservationIgnored private let trash: TrashStore = {
+        var folder = LibraryStore.trashFolder
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
@@ -170,6 +176,7 @@ final class LibraryStore {
     func deletePermanently(_ entry: TrashStore.Entry) {
         trash.deletePermanently(entry)
         trashEntries = trash.entries
+        measureStorage()
     }
 
     /// Moves extra copies to Recently Deleted. `paths` are library-relative.
@@ -191,6 +198,7 @@ final class LibraryStore {
     func emptyTrash() {
         for entry in trash.entries { trash.deletePermanently(entry) }
         trashEntries = trash.entries
+        measureStorage()
     }
 
     private static func isAudio(_ url: URL) -> Bool {
@@ -225,6 +233,17 @@ final class LibraryStore {
             await ArtworkStore.shared.forgetMisses()
         } while rescanRequested
         findDuplicates()
+        measureStorage()
+    }
+
+    /// Measures the library and Recently Deleted folders in the background.
+    func measureStorage() {
+        Task { [weak self] in
+            let summary = await Task.detached(priority: .utility) {
+                StorageSummary.measure(library: LibraryStore.libraryFolder, trash: LibraryStore.trashFolder)
+            }.value
+            self?.storage = summary
+        }
     }
 
     /// Looks for identical files in the background. Only files of equal size are read.

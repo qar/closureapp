@@ -294,7 +294,8 @@ features:
     title: 存储页：总占用、每张专辑的大小、剩余空间
     category: library
     priority: P1
-    platforms: { ios: planned }
+    platforms: { ios: done }
+    notes: iOS 完成（2026-11-16）。资料库底部“Storage”入口显示曲库占用；页面有本机用量条（音乐、其他、可用）和三项数字，说明 Recently Deleted 占用及释放时机，说明音乐不在 iCloud 备份里；专辑按大小排序，点开进入专辑。占用按磁盘实际分配大小统计（含封面、歌词），扫描后和 Recently Deleted 变化后在后台重新测量。
 
   - id: library.export
     title: 把专辑原样导出到"文件"App
@@ -382,7 +383,7 @@ features:
       - App 更新后曲库完整，文件路径全部以相对路径保存。
       - 启动时发现缺失或损坏的文件，并告诉用户。
       - 设置中显示曲库占用空间。删除文件前要确认。
-    notes: 曲库目录已排除在 iCloud 设备备份之外。在 sync.backup 完成前，换机或丢机会丢失音乐，需要在界面上说明。
+    notes: 曲库目录已排除在 iCloud 设备备份之外。存储页显示占用并说明音乐不在 iCloud 备份里（2026-11-16）；删除前确认、路径全部相对已实现。尚未做：启动时发现损坏的文件并告诉用户（缺失的文件扫描时会从曲库移除，但没有提示）。
 
   - id: library.database
     title: 用数据库保存曲库，替代 JSON 索引

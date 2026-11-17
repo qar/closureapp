@@ -73,3 +73,27 @@ final class PlaybackStateTests: XCTestCase {
         XCTAssertNil(PlaybackState.load(from: url.appendingPathExtension("missing")))
     }
 }
+
+final class StorageSummaryTests: XCTestCase {
+    func testMeasuresFoldersAndShares() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("storage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = root.appendingPathComponent("Music/Album"), trash = root.appendingPathComponent("Trash")
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        try Data(count: 100_000).write(to: library.appendingPathComponent("01.flac"))
+        try Data(count: 50_000).write(to: library.appendingPathComponent("cover.jpg"))
+        try Data(count: 10_000).write(to: trash.appendingPathComponent("old.flac"))
+
+        let summary = StorageSummary.measure(library: root.appendingPathComponent("Music"), trash: trash)
+        XCTAssertGreaterThanOrEqual(summary.music, 150_000, "covers count too")
+        XCTAssertGreaterThanOrEqual(summary.recentlyDeleted, 10_000)
+        XCTAssertLessThan(summary.recentlyDeleted, summary.music)
+        XCTAssertNotNil(summary.free)
+
+        let shares = try XCTUnwrap(StorageSummary(music: 20, recentlyDeleted: 5, free: 50, capacity: 100).shares)
+        XCTAssertEqual(shares.music, 0.20, accuracy: 1e-9, "Recently Deleted counts as other")
+        XCTAssertEqual(shares.other, 0.30, accuracy: 1e-9)
+        XCTAssertEqual(shares.free, 0.5, accuracy: 1e-9)
+    }
+}
