@@ -70,6 +70,7 @@ targets:
       - path: Closure/Library/FileProblems.swift
       - path: Closure/Library/AlbumOverride.swift
       - path: Closure/Library/MusicBrainz.swift
+      - path: Closure/Library/Lyrics.swift
     dependencies:
       - sdk: libsqlite3.tbd
     settings:

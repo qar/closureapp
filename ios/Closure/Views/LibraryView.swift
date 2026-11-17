@@ -357,7 +357,7 @@ struct LibraryView: View {
         }
         switch screen {
         case "album": path.append(LibraryRoute.album(target.id))
-        case "nowplaying", "signal", "queue": showingNowPlaying = true
+        case "nowplaying", "signal", "queue", "lyrics": showingNowPlaying = true
         case "artists": tab = .artists
         case "folders": tab = .folders
         case "search": showingSearch = true

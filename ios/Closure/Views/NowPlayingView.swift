@@ -8,15 +8,37 @@ struct NowPlayingView: View {
     @State private var showingQueue = false
     /// The play mode just picked, named for a moment in place of the format line.
     @State private var modeNotice: PlayMode?
+    /// Lyrics replace the cover; a tap on either switches.
+    @State private var showingLyrics = false
+    @State private var lyrics: Lyrics?
+    @State private var lyricsLoading = false
 
     var body: some View {
         VStack(spacing: 0) {
             topBar
             if let track = player.currentTrack {
-                ArtworkView(request: track.artworkRequest, title: track.album, pixelSize: 1100)
-                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
+                // The same square either way, so nothing below moves.
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        if showingLyrics {
+                            LyricsView(lyrics: lyrics, isLoading: lyricsLoading) { showingLyrics = false }
+                        } else {
+                            ArtworkView(request: track.artworkRequest, title: track.album, pixelSize: 1100)
+                                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
+                                .onTapGesture { showingLyrics = true }
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityLabel("Cover. Shows lyrics")
+                        }
+                    }
                     .padding(.horizontal, 28)
                     .padding(.top, 12)
+                    .task(id: track.id) {
+                        lyrics = nil
+                        lyricsLoading = true
+                        lyrics = await LyricsLoader.load(for: track.url)
+                        lyricsLoading = false
+                    }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(track.title)
@@ -70,6 +92,7 @@ struct NowPlayingView: View {
             if let flag = arguments.firstIndex(of: "-ClosureScreen"), flag + 1 < arguments.count {
                 showingSignalPath = arguments[flag + 1] == "signal"
                 showingQueue = arguments[flag + 1] == "queue"
+                showingLyrics = arguments[flag + 1] == "lyrics"
             }
             // -ClosurePlayMode <mode>: switch to it after 2 s, as a tap would, for screenshots.
             if let modeFlag = arguments.firstIndex(of: "-ClosurePlayMode"), modeFlag + 1 < arguments.count,
