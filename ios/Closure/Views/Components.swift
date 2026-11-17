@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Square album artwork with a typographic placeholder while loading or when none exists.
 struct ArtworkView: View {
@@ -203,4 +204,23 @@ func formatTime(_ seconds: Double) -> String {
     let total = Int(seconds.rounded(.down))
     if total >= 3600 { return String(format: "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60) }
     return String(format: "%d:%02d", total / 60, total % 60)
+}
+
+/// "Play Next" and "Play Last" for a context menu, as in Apple Music. A light haptic
+/// confirms the change, since the screen does not.
+struct QueueMenuItems: View {
+    let tracks: [Track]
+    let context: String
+    @Environment(PlayerModel.self) private var player
+
+    var body: some View {
+        Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+            player.playNext(tracks, context: context)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+        Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
+            player.playLast(tracks, context: context)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+    }
 }

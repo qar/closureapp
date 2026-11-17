@@ -113,6 +113,8 @@ struct AlbumView: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
+                    QueueMenuItems(tracks: [track], context: album.title)
+                    Divider()
                     Button("Delete…", systemImage: "trash", role: .destructive) { pendingDelete = track }
                 }
                 Hairline()
@@ -202,6 +204,7 @@ struct FolderView: View {
                                      isCurrent: player.currentTrack?.id == track.id)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu { QueueMenuItems(tracks: [track], context: name) }
                         Hairline()
                     }
                 }

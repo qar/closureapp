@@ -261,6 +261,7 @@ struct SearchView: View {
                                          isCurrent: player.currentTrack?.id == item.track.id)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu { QueueMenuItems(tracks: [item.track], context: item.album.title) }
                             Hairline()
                         }
                     }

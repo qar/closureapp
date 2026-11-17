@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// What was playing, saved so playback can continue after the app is closed or the
 /// system ends it: the queue (library-relative paths), the current track, the
@@ -60,5 +61,25 @@ struct PlaybackState: Codable, Equatable {
     static var appURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Playback/state.json")
+    }
+}
+
+/// Queue edits as plain functions: each returns the new queue and where the current
+/// track ended up, so the current track never changes by accident.
+enum QueueEditing {
+    /// Removes `offsets`, except the current track.
+    static func removing<T>(_ offsets: IndexSet, from queue: [T], current: Int) -> (queue: [T], current: Int)? {
+        let removable = offsets.filter { $0 != current && queue.indices.contains($0) }
+        guard !removable.isEmpty else { return nil }
+        var result = queue
+        for index in removable.sorted(by: >) { result.remove(at: index) }
+        return (result, current - removable.filter { $0 < current }.count)
+    }
+
+    /// Moves rows as List.onMove reports it; the current track may move too.
+    static func moving<T>(_ source: IndexSet, to destination: Int, in queue: [T], current: Int) -> (queue: [T], current: Int) {
+        var marked = queue.enumerated().map { (offset: $0.offset, item: $0.element) }
+        marked.move(fromOffsets: source, toOffset: destination)
+        return (marked.map(\.item), marked.firstIndex { $0.offset == current } ?? current)
     }
 }

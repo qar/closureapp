@@ -169,11 +169,11 @@ features:
     title: 播放队列：下一首播放、稍后播放、查看和调整队列
     category: playback
     priority: P1
-    platforms: { ios: partial, macos: partial }
+    platforms: { ios: done, macos: partial }
     why: [reviews-2026-11]
     acceptance:
       - 可以把单曲或整张专辑加入队列，并调整顺序。
-    notes: iOS 可以查看队列并跳到任意曲目。还没有下一首播放和稍后播放。
+    notes: iOS 完成（2026-11-16）。专辑页、文件夹页、搜索结果的歌曲和资料库的专辑封面长按有“Play Next”和“Play Last”，加入时有轻触感反馈，当前曲目不中断（引擎 replaceQueue）。随机模式下插入的歌也进入原顺序，退出随机后仍在。队列页左滑移除（当前曲目不能移除），点 Edit 拖动排序。没有歌在播放时，这两项直接开始播放。
 
   - id: playback.resume-state
     title: 重启后恢复队列和播放位置

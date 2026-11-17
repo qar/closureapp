@@ -185,6 +185,60 @@ final class PlayerModel {
         saveState()
     }
 
+    // MARK: - Queue editing
+
+    /// Puts `tracks` right after the current track. With nothing to play, plays them.
+    func playNext(_ tracks: [Track], context: String) {
+        guard !tracks.isEmpty else { return }
+        guard let current = currentTrack else { return play(tracks, from: 0, context: context, shuffled: false) }
+        var newQueue = queue
+        newQueue.insert(contentsOf: tracks, at: currentIndex + 1)
+        // Keep the original order in step, so the tracks stay when shuffle is turned off.
+        if isShuffled, let originalIndex = originalQueue.firstIndex(where: { $0.id == current.id }) {
+            originalQueue.insert(contentsOf: tracks, at: originalIndex + 1)
+        }
+        applyQueue(newQueue, currentIndex: currentIndex)
+    }
+
+    /// Puts `tracks` at the end of the queue. With nothing to play, plays them.
+    func playLast(_ tracks: [Track], context: String) {
+        guard !tracks.isEmpty else { return }
+        guard currentTrack != nil else { return play(tracks, from: 0, context: context, shuffled: false) }
+        if isShuffled { originalQueue += tracks }
+        applyQueue(queue + tracks, currentIndex: currentIndex)
+    }
+
+    /// Removes tracks from the queue. The current track cannot be removed.
+    func removeFromQueue(at offsets: IndexSet) {
+        guard let edited = QueueEditing.removing(offsets, from: queue, current: currentIndex) else { return }
+        if isShuffled {
+            for index in offsets where index != currentIndex && queue.indices.contains(index) {
+                if let original = originalQueue.firstIndex(where: { $0.id == queue[index].id }) { originalQueue.remove(at: original) }
+            }
+        }
+        applyQueue(edited.queue, currentIndex: edited.current)
+    }
+
+    /// Reorders the queue, as List.onMove reports it. The current track keeps playing.
+    func moveInQueue(from source: IndexSet, to destination: Int) {
+        guard currentTrack != nil else { return }
+        let edited = QueueEditing.moving(source, to: destination, in: queue, current: currentIndex)
+        applyQueue(edited.queue, currentIndex: edited.current)
+    }
+
+    /// Hands a changed queue to the engine without interrupting the current track.
+    private func applyQueue(_ newQueue: [Track], currentIndex newIndex: Int) {
+        queue = newQueue
+        currentIndex = newIndex
+        if !isShuffled { originalQueue = newQueue }
+        // A restored queue is not in the engine yet; it is loaded on play.
+        if pendingPosition == nil {
+            engine.replaceQueue(newQueue.map(\.url.path), currentIndex: newIndex)
+        }
+        updateNowPlaying()
+        saveState()
+    }
+
     // MARK: - Saved state
 
     /// Puts back the queue and position saved last time, paused. Does nothing when

@@ -255,32 +255,61 @@ struct ProgressScrubber: View {
     }
 }
 
+/// The play queue. Tap a track to play it; swipe left to remove one; Edit to reorder.
+/// The current track cannot be removed.
 struct QueueView: View {
     @Environment(PlayerModel.self) private var player
+    @State private var editMode: EditMode = .inactive
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
                 Text("Queue")
                     .font(Theme.serif(36))
                     .foregroundStyle(Theme.ink)
-                    .padding(.top, 28)
-                MetaText("\(player.queue.count) tracks\(player.contextTitle.isEmpty ? "" : " · from \(player.contextTitle)")", size: 10)
-                    .padding(.top, 6)
-                    .padding(.bottom, 20)
-                Hairline()
-                ForEach(Array(player.queue.enumerated()), id: \.element.id) { index, track in
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button(editMode.isEditing ? "Done" : "Edit") {
+                    withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                }
+                .font(.system(size: 17, weight: editMode.isEditing ? .semibold : .regular))
+                .foregroundStyle(Theme.ink)
+                .frame(minHeight: 44)
+            }
+            .padding(.top, 20)
+            MetaText("\(player.queue.count) tracks\(player.contextTitle.isEmpty ? "" : " · from \(player.contextTitle)")", size: 10)
+                .padding(.top, 2)
+                .padding(.bottom, 20)
+            Hairline()
+            List {
+                ForEach(Array(player.queue.enumerated()), id: \.offset) { index, track in
                     Button { player.playQueueIndex(index) } label: {
                         TrackRow(number: index + 1, title: track.title, subtitle: track.artist,
                                  duration: track.duration, isCurrent: index == player.currentIndex)
+                            .padding(.trailing, editMode.isEditing ? 12 : 0)
                     }
                     .buttonStyle(.plain)
-                    Hairline()
+                    .listRowInsets(EdgeInsets())
+                    // Full-width hairlines, as everywhere else in the app, also under the
+                    // reorder handles while editing.
+                    .listRowBackground(Theme.paper.overlay(alignment: .bottom) { Hairline() })
+                    .listRowSeparator(.hidden)
+                    // Edit only reorders, so every row lines up; removing is a swipe.
+                    .deleteDisabled(editMode.isEditing || index == player.currentIndex)
                 }
+                .onMove { player.moveInQueue(from: $0, to: $1) }
+                .onDelete { player.removeFromQueue(at: $0) }
             }
-            .padding(.horizontal, Theme.horizontalMargin)
-            .padding(.bottom, 24)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.editMode, $editMode)
         }
+        .padding(.horizontal, Theme.horizontalMargin)
+#if DEBUG
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-ClosureQueueEdit") { editMode = .active }
+        }
+#endif
     }
 }
 

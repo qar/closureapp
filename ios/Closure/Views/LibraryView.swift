@@ -373,6 +373,18 @@ struct LibraryView: View {
             target = match
         }
         player.play(target.tracks, from: min(1, target.tracks.count - 1), context: target.title)
+        // -ClosurePlayNext: insert tracks from another album, then log the queue.
+        if arguments.contains("-ClosurePlayNext"), let other = library.albums.first(where: { $0.id != target.id }) {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                let before = player.progress.position
+                player.playNext([other.tracks[0]], context: other.title)
+                player.playLast(Array(other.tracks.suffix(2)), context: other.title)
+                try? await Task.sleep(for: .seconds(1))
+                print(String(format: "[Closure] queue edit: %@ %.2f s -> %.2f s; queue %@", player.currentTrack?.title ?? "?",
+                             before, player.progress.position, player.queue.map(\.title).joined(separator: ", ")))
+            }
+        }
         switch screen {
         case "album": path.append(LibraryRoute.album(target.id))
         case "nowplaying", "signal", "queue": showingNowPlaying = true
@@ -432,6 +444,7 @@ struct AlbumGrid: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
+                .contextMenu { QueueMenuItems(tracks: album.tracks, context: album.title) }
             }
         }
         .padding(.horizontal, Theme.horizontalMargin)
