@@ -17,3 +17,8 @@ DerivedData/
 ios/Closure.xcodeproj/
 ios/build/
 core/build*/
+
+# App Store Connect API key ids (local only)
+ios/fastlane/.env
+ios/fastlane/report.xml
+ios/fastlane/README.md

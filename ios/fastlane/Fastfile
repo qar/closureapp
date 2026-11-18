@@ -10,8 +10,25 @@ def asc_api_key
   app_store_connect_api_key(
     key_id: key_id,
     issuer_id: issuer_id,
-    key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+    key_filepath: asc_key_path,
+    in_house: false
   )
+end
+
+def require_api_key!
+  UI.user_error!("Set APP_STORE_CONNECT_API_KEY_ID and APP_STORE_CONNECT_API_KEY_ISSUER_ID (ios/fastlane/.env)") if asc_api_key.nil?
+end
+
+def asc_key_path
+  File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV['APP_STORE_CONNECT_API_KEY_ID']}.p8")
+end
+
+# xcodebuild flags that let -exportArchive sign and upload with the API key, so no
+# Apple ID has to be added to Xcode.
+def xcodebuild_auth_args
+  "-allowProvisioningUpdates -authenticationKeyPath #{asc_key_path} " \
+    "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']} " \
+    "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_KEY_ISSUER_ID']}"
 end
 
 platform :ios do
@@ -51,5 +68,34 @@ platform :ios do
       submit_for_review: false,
       run_precheck_before_submit: false
     )
+  end
+
+  # Pulls the store text that is on App Store Connect into fastlane/metadata, to
+  # compare with what we have (git diff shows the differences).
+  desc "Download the current App Store metadata"
+  lane :fetch_metadata do
+    require_api_key!
+    key_file = File.join(Dir.tmpdir, "papermoon-asc-key.json")
+    File.write(key_file, { key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"], issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+                           key: File.read(asc_key_path), in_house: false }.to_json)
+    begin
+      sh("fastlane deliver download_metadata --api_key_path #{key_file} --app_version 0.0.1 --force")
+    ensure
+      File.delete(key_file) if File.exist?(key_file)
+    end
+  end
+
+  # Signs build/Papermoon.xcarchive for the App Store and uploads it (ExportOptions
+  # has destination "upload"). Signing and upload use the API key; no Apple ID has
+  # to be added to Xcode. Takes a few minutes; the build then shows up in TestFlight
+  # and can be attached to version 0.0.1.
+  desc "Sign build/Papermoon.xcarchive and upload the build to App Store Connect"
+  lane :upload_build do |options|
+    require_api_key!
+    archive = File.expand_path(options[:archive] || "../build/Papermoon.xcarchive")
+    UI.user_error!("No archive at #{archive}") unless File.directory?(archive)
+    sh("xcodebuild -exportArchive -archivePath '#{archive}' " \
+       "-exportOptionsPlist '#{File.expand_path('../ExportOptions-AppStore.plist')}' " \
+       "-exportPath '#{File.expand_path('../build/export')}' #{xcodebuild_auth_args}")
   end
 end
