@@ -37,6 +37,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.qar.closure
         INFOPLIST_FILE: Closure/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Closure/Closure.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Closure/Bridge/Closure-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - $(SRCROOT)/../core/include
@@ -79,6 +80,7 @@ targets:
       - path: Closure/Library/MusicBrainz.swift
       - path: Closure/Library/Lyrics.swift
       - path: Closure/Library/Playlist.swift
+      - path: Closure/CarPlay/CarPlayPage.swift
     dependencies:
       - sdk: libsqlite3.tbd
     settings:
