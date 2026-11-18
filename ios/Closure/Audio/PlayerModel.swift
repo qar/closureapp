@@ -178,6 +178,7 @@ final class PlayerModel {
             try engine.play()
             isPlaying = true
         } catch {
+            pendingPosition = position
             lastError = error.localizedDescription
             isPlaying = false
         }
@@ -296,13 +297,14 @@ final class PlayerModel {
             start(at: currentIndex, position: pendingPosition)
             return
         }
+        let position = engine.status.positionSeconds
         do {
             try session.activate()
-            syncOutputRate()
+            try syncOutputRate()
             try engine.play()
             isPlaying = true
         } catch {
-            lastError = error.localizedDescription
+            outputFailed(error, resumeAt: position)
         }
         updateNowPlaying()
     }
@@ -390,11 +392,20 @@ final class PlayerModel {
     }
 
     /// Re-opens the output when the hardware rate changed (e.g. a new route).
-    private func syncOutputRate() {
+    private func syncOutputRate() throws {
         let hardwareRate = session.sampleRate
-        if abs(engine.status.outputSampleRate - hardwareRate) > 0.5 {
-            try? engine.setOutputSampleRate(hardwareRate)
+        if hardwareRate > 0, abs(engine.status.outputSampleRate - hardwareRate) > 0.5 {
+            try engine.setOutputSampleRate(hardwareRate)
         }
+    }
+
+    private func outputFailed(_ error: Error, resumeAt position: Double) {
+        lastError = error.localizedDescription
+        engine.pause()
+        pendingPosition = position
+        isPlaying = false
+        updateNowPlaying()
+        saveState()
     }
 
     private func wireSession() {
@@ -410,19 +421,24 @@ final class PlayerModel {
         }
         session.onOutputLost = { [weak self] in
             // Never move playback to the speaker on its own.
+            self?.resumeAfterInterruption = false
             self?.pause()
         }
         session.onRouteChanged = { [weak self] in
-            self?.syncOutputRate()
+            guard let self else { return }
+            let position = engine.status.positionSeconds
+            do { try syncOutputRate() } catch { outputFailed(error, resumeAt: position) }
         }
         session.onMediaServicesReset = { [weak self] in
             guard let self else { return }
             // The output unit is gone. Rebuild it at the current hardware rate.
             // The engine resumes on its own if it was playing.
+            let position = engine.status.positionSeconds
             engine.resetOutput()
-            if (try? session.activate()) != nil {
-                try? engine.setOutputSampleRate(session.sampleRate)
-            }
+            do {
+                try session.activate()
+                try syncOutputRate()
+            } catch { outputFailed(error, resumeAt: position) }
         }
     }
 
@@ -474,7 +490,7 @@ final class PlayerModel {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyPlaybackDuration: status.durationSeconds > 0 ? status.durationSeconds : track.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: status.positionSeconds,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: pendingPosition ?? status.positionSeconds,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyPlaybackQueueIndex: currentIndex,
             MPNowPlayingInfoPropertyPlaybackQueueCount: queue.count,
