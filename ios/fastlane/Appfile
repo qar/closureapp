@@ -1,0 +1,6 @@
+# App Store Connect coordinates. Static identifiers only; no secrets here.
+# Product name: Papermoon. Development codename: Closure (bundle ID and code keep it).
+app_identifier("com.qar.closure")
+apple_id("aaron20180217@gmail.com")
+team_id("L9WF5HSH87")
+itc_team_id("L9WF5HSH87")

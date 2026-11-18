@@ -647,6 +647,45 @@ void PlaybackEngine::setQueue(std::vector<std::string> paths, int startIndex)
     impl->jumpLocked(index, 0);
 }
 
+void PlaybackEngine::replaceQueue(std::vector<std::string> paths, int currentIndex)
+{
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    if (paths.empty() || currentIndex < 0 || currentIndex >= static_cast<int>(paths.size()))
+        return;
+
+    const auto position = impl->currentPositionLocked();
+    impl->queue = std::move(paths);
+
+    if (impl->boundaries.empty() || impl->endedAnnounced)
+    {
+        // Nothing decoded (or the queue has ended): the next play starts here.
+        impl->selectedIndex = currentIndex;
+        if (impl->endedAnnounced)
+            impl->announcedIndex = currentIndex;
+        return;
+    }
+
+    // Audio of the old next track may already be in the buffer. Then decode again from
+    // the current position, as a repeat mode change does.
+    const auto decodedAhead = impl->streamFinished
+                           || impl->decodingIndex != position.trackIndex
+                           || std::any_of(impl->boundaries.begin(), impl->boundaries.end(),
+                                          [](const Boundary& boundary) { return !boundary.announced; });
+    if (decodedAhead)
+    {
+        impl->announcedIndex = currentIndex; // Same track: no track change event.
+        impl->jumpLocked(currentIndex, position.frame);
+        return;
+    }
+
+    // Only the current track is buffered: renumber it. The audio is untouched.
+    for (auto& boundary : impl->boundaries)
+        boundary.trackIndex = currentIndex;
+    impl->decodingIndex = currentIndex;
+    impl->selectedIndex = currentIndex;
+    impl->announcedIndex = currentIndex;
+}
+
 bool PlaybackEngine::play(std::string* error)
 {
     std::unique_lock<std::mutex> lock(impl->mutex);

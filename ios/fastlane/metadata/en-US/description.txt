@@ -1,0 +1,21 @@
+Papermoon plays the music you own, from your iPhone, the way it was recorded.
+
+YOUR LIBRARY, ON YOUR IPHONE
+• Import albums and folders from the Files app, Google Drive or Finder. Folders keep their layout.
+• Every copy is checked before it joins your library, so an interrupted import never leaves half an album.
+• Files with the same content are found and skipped, whatever their names.
+• No account, no streaming, no ads. Your music plays with no connection.
+
+SOUND AS RECORDED
+• FLAC, ALAC, WAV, AIFF, AAC and MP3, up to 24-bit and high sample rates.
+• Gapless playback for live albums and continuous mixes.
+• No volume processing in the app. The output follows each album's sample rate when your device allows it.
+• The Signal Path page shows what happens to the audio, step by step.
+
+MADE FOR LISTENING
+• Synced lyrics from .lrc files or the tags, or found online when you ask.
+• Album info and covers from MusicBrainz when you ask. Your files are never changed.
+• Playlists, Favorites, Play Next and Play Last.
+• Play in order, repeat all, repeat one or shuffle. Playback continues where you left off.
+
+Papermoon only goes online when you ask it to: to import from Google Drive, or to look up album info or lyrics.

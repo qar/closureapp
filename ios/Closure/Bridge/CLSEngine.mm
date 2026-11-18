@@ -136,6 +136,16 @@ NSString* codecName(std::uint32_t formatID)
     _engine->setQueue(std::move(converted), static_cast<int>(startIndex));
 }
 
+- (void)replaceQueue:(NSArray<NSString*>*)paths currentIndex:(NSInteger)currentIndex
+{
+    std::vector<std::string> converted;
+    converted.reserve(paths.count);
+    for (NSString* path in paths)
+        converted.emplace_back(path.fileSystemRepresentation);
+
+    _engine->replaceQueue(std::move(converted), static_cast<int>(currentIndex));
+}
+
 - (BOOL)playAndReturnError:(NSError**)error
 {
     std::string message;

@@ -189,4 +189,83 @@ final class FileImporterTests: XCTestCase {
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/._b.flac")), .junk)
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/b.zip")), .other)
     }
+
+    // MARK: - Staged, verified copies
+
+    private var staging: URL { root.appendingPathComponent("Staging") }
+
+    private func stagingIsEmpty() -> Bool {
+        ((try? fileManager.contentsOfDirectory(atPath: staging.path)) ?? []).isEmpty
+    }
+
+    func testCopyIsVerifiedThroughStagingAndLeavesNoTrace() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Album/01.flac", in: source, bytes: 300_000)
+        try makeFile("Album/cover.jpg", in: source)
+
+        let report = importer.importItem(source.appendingPathComponent("Album"), mode: .copy)
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.companionFiles, 1)
+        XCTAssertEqual(try Data(contentsOf: library.appendingPathComponent("Album/01.flac")),
+                       try Data(contentsOf: source.appendingPathComponent("Album/01.flac")))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testCorruptedCopyNeverReachesTheLibrary() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Album/01.flac", in: source)
+        try makeFile("Album/02.flac", in: source)
+        var importer = FileImporter(libraryRoot: library)
+        importer.afterStaging = { staged in
+            if staged.lastPathComponent == "02.flac" { try? Data([0, 0, 0]).write(to: staged) } // simulate a bad write
+        }
+
+        let report = importer.importItem(source.appendingPathComponent("Album"), mode: .copy)
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.failed, ["Album/02.flac"])
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertFalse(exists("Album/02.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: source), "the source is never touched")
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testNotEnoughSpaceCopiesNothing() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Album/01.flac", in: source, bytes: 5_000)
+        let importer = FileImporter(libraryRoot: library, availableSpace: { FileImporter.spaceReserve + 1_000 })
+
+        let report = importer.importCopies([source.appendingPathComponent("Album")])
+
+        XCTAssertEqual(report.spaceShortfall, 4_000)
+        XCTAssertEqual(report.audioFiles, 0)
+        XCTAssertFalse(exists("Album", in: library))
+    }
+
+    func testVerifiedStagingFinishesOnNextLaunch() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+        try makeFile("Album/cover.jpg", in: batch)
+        try JSONSerialization.data(withJSONObject: ["files": ["Album/01.flac", "Album/cover.jpg"]])
+            .write(to: batch.appendingPathComponent("manifest.json"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.companionFiles, 1)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testUnverifiedStagingIsDiscarded() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report, FileImporter.Report())
+        XCTAssertFalse(exists("Album/01.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
 }

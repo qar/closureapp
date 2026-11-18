@@ -142,7 +142,7 @@ features:
     acceptance:
       - 锁屏和控制中心显示标题、艺人、专辑、封面和进度。
       - 播放、暂停、上一首、下一首、拖动进度都有效。
-    notes: iOS 原型缺少封面。
+    notes: iOS 已显示标题、艺人、专辑、封面和进度（2026-11-16）。尚未在真机上逐项验证锁屏和耳机按键。
 
   - id: playback.declick
     title: 开始、暂停、跳转时不爆音
@@ -156,30 +156,36 @@ features:
     title: 随机播放
     category: playback
     priority: P0
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: done, macos: planned }
     why: [reviews-2026-11（多个 App 因没有随机播放或随机不均匀被差评）]
     acceptance:
       - 随机顺序在一轮内不重复。
       - 随机播放下仍保持无缝衔接。
+      - 正在播放页左下角是一个播放模式按钮，按常见约定在顺序播放、列表循环、单曲循环、随机播放之间循环切换，切换后在底部中间短暂显示模式名称；“…”菜单里也可以直接选择。
+      - 切到随机时当前曲目不中断，只重排后面的曲目；离开随机后回到原顺序，从当前曲目在原顺序中的位置继续。
+    notes: iOS 完成（2026-11-16）。随机播放会循环（同列表循环）。随机是持续模式：专辑页 Play 关闭随机、Shuffle 打开随机，点单曲保持当前模式（随机时点的那首先放，其余随机）。引擎新增 replaceQueue：解码器还没进入下一首时只给当前曲目重新编号，音频不受影响；已经预解码下一首时从当前位置重新解码（与改重复模式相同）。随机模式和原顺序随播放状态保存，重启后恢复。重复全部时每一轮使用同一个随机顺序。
 
   - id: playback.queue
     title: 播放队列：下一首播放、稍后播放、查看和调整队列
     category: playback
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: done, macos: partial }
     why: [reviews-2026-11]
     acceptance:
       - 可以把单曲或整张专辑加入队列，并调整顺序。
+    notes: iOS 完成（2026-11-16）。专辑页、文件夹页、搜索结果的歌曲和资料库的专辑封面长按有“Play Next”和“Play Last”，加入时有轻触感反馈，当前曲目不中断（引擎 replaceQueue）。随机模式下插入的歌也进入原顺序，退出随机后仍在。队列页左滑移除（当前曲目不能移除），点 Edit 拖动排序。没有歌在播放时，这两项直接开始播放。
 
   - id: playback.resume-state
     title: 重启后恢复队列和播放位置
     category: playback
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: done, macos: partial }
     why: [reviews-2026-11（暂停一段时间后从头播放）]
     acceptance:
       - App 被系统结束后重新打开，队列、曲目和位置都与之前相同。
-    notes: macOS 当前恢复播放列表，不恢复播放位置。
+      - 打开 App 时不激活音频会话，不打断其他 App 正在播放的声音；按播放后才装载队列，先跳到保存的位置再出声。
+      - 期间被删除的曲目从队列中去掉；当前曲目被删除时从下一首的开头继续。
+    notes: iOS 在开始播放、暂停、切歌、拖动进度、改重复模式和 App 离开前台时保存（2026-11-16），不用定时器，不增加耗电。macOS 当前恢复播放列表，不恢复播放位置。
 
   - id: playback.signal-path
     title: 显示完整信号路径
@@ -255,16 +261,7 @@ features:
       - 先拷进暂存区并校验大小和哈希，整张专辑一次性移入曲库。中断后可以继续。
       - 来自 iCloud Drive 的未下载文件先下载再导入。
       - 导入结束后报告导入了什么、跳过了什么、为什么。
-    notes: 第一条已完成（2026-11-16 修复收件箱删除非音频文件的问题）。其余尚未实现。
-
-  - id: library.dedupe
-    title: 导入时识别重复文件
-    category: library
-    priority: P1
-    platforms: { ios: planned }
-    acceptance:
-      - 内容完全相同的文件跳过并告诉用户。路径相同但内容不同时，两份都保留，由用户选择。
-    notes: 目前同名文件会以"名称 2"另存一份，不会覆盖已有文件。
+    notes: iOS 已实现（2026-11-16）：导入在后台进行；先算总大小，空间不足（含 200 MB 余量）时不复制并提示差多少；从“文件”App 复制时边复制边算 SHA-256，读回校验后才整批移入曲库，校验失败的文件不进曲库；已校验的暂存带清单，下次启动续完，未校验的丢弃；收件箱只移除成功进入曲库的文件。通过 NSFileCoordinator 读取以触发 iCloud 下载，这一点尚未在真机的 iCloud Drive 上验证。
 
   - id: library.target-folder
     title: 导入时选择放进曲库中的哪个文件夹
@@ -278,25 +275,40 @@ features:
     title: 按原始文件夹结构浏览
     category: library
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: partial, macos: partial }
     why: [reviews-2026-11（不能按文件夹浏览，古典乐用户尤其需要）]
+    notes: iOS（2026-11-16）：Folders 从资料库标签移到 Library Info → Folders（资料库只留 Albums、Artists、Playlists）。列出每个含音频的文件夹（嵌套的显示上级路径），点开按文件名列出曲目。尚未做：逐层展开的目录树。
 
   - id: library.trash
     title: 最近删除
     category: library
     priority: P0
-    platforms: { ios: planned }
+    platforms: { ios: done }
     why: [principles（绝不丢失用户的文件）]
     acceptance:
       - 删除的文件先进"最近删除"，到期后才真正清除，期间可以恢复。
       - 批量删除前要确认。
-    notes: 保留期暂定 30 天，待确认。原型目前左滑直接删除，没有确认。
+    notes: iOS 已实现（2026-11-16）：删除后文件连同同名歌词、CUE 移入 Application Support/Trash，可原位恢复（重名时另存为“名称 2”），30 天后启动时清除，全部删除前确认。保留期 30 天待用户最终确认。单曲删除和整张专辑删除（library.delete-album）已有，批量选择尚未实现（见 library.batch-ops）。
+
+  - id: library.delete-album
+    title: 删除整张专辑
+    category: library
+    priority: P0
+    platforms: { ios: done }
+    why: [principles（任何删除都要用户确认）, 用户反馈 2026-11-17（App 中缺少移除专辑的能力）]
+    acceptance:
+      - 专辑页的"…"菜单有"Delete Album…"，确认框写明曲目数和去向。
+      - 每首曲目单独进"最近删除"，可以只恢复其中一首。
+      - 专辑文件夹里剩下的封面、小册子等文件随后进"最近删除"（一条记录），空文件夹被移除；文件夹里还有其他专辑的音频时不动这些文件。
+      - 恢复全部记录后曲目、封面和文件夹回到原位（单元测试覆盖）。
+    notes: iOS 已实现（2026-11-17）。专辑元数据覆盖（标题、封面）留在数据库里，恢复后仍然生效。
 
   - id: library.storage-view
     title: 存储页：总占用、每张专辑的大小、剩余空间
     category: library
     priority: P1
-    platforms: { ios: planned }
+    platforms: { ios: done }
+    notes: iOS 完成（2026-11-16）。资料库右上角“…”进入 Library Info 页（Library 页只放音乐，管理入口不放在资料库底部）；页面依次是存储（本机用量条（音乐、其他、可用）和三项数字，说明 Recently Deleted 占用及释放时机，说明音乐不在 iCloud 备份里）、文件（Duplicates、Recently Deleted 入口）、专辑按大小排序，点开进入专辑。占用按磁盘实际分配大小统计（含封面、歌词），扫描后和 Recently Deleted 变化后在后台重新测量。
 
   - id: library.export
     title: 把专辑原样导出到"文件"App
@@ -320,6 +332,37 @@ features:
     platforms: { ios: planned, macos: done }
     why: [reviews-2026-11（想直接播放外接 SSD，不占手机空间）]
     notes: 与 App 管理的曲库并存。外部文件不可用时（iCloud 未下载、外接盘断开）必须在界面上标出。
+
+  - id: library.google-drive-import
+    title: 在 App 内浏览 Google Drive，选择文件或整个文件夹导入
+    category: library
+    priority: P1
+    platforms: { ios: partial }
+    why: [用户要求（2026-11-16）；竞品在 App 内浏览 Drive，系统浏览器里的选择器体验差]
+    acceptance:
+      - 登录一次后，在 App 内浏览“我的云端硬盘”“共享云端硬盘”“与我共享”，只显示文件夹和音频文件。
+      - 可以跨文件夹多选文件或整个文件夹，导入走下载、空间检查、暂存校验流程。
+      - 刷新令牌存放在钥匙串，访问令牌自动刷新；登录过期时提示重新登录；可以退出并撤销授权。
+      - 下载页面显示总进度、速度、剩余时间和每个文件的状态；资料库底部有下载状态条，点开进入下载页面。
+      - 下载在后台会话里进行，App 退到后台后继续；任务保存在磁盘上，App 重新启动后接着下载。
+      - 前台同时下载 3 个文件；超时、断网、5xx、429 自动重试（最多 5 次，间隔 2、4、8、16 秒），服务器允许时从断点续传；401 换新令牌重试；404、403 等直接标为失败。
+      - 单个文件失败不影响其他文件；失败的文件可以单独重试或全部重试；整个专辑下完（或只剩失败文件）后才导入，避免专辑分几次进资料库。
+    notes: 使用受限权限 drive.readonly。测试状态下最多 100 个测试用户可用（会显示未验证提示，刷新令牌约 7 天过期）。正式发布前必须通过 Google 受限权限审核（约 6 周、每年复审，是否需要付费的 CASA 安全评估待确认）。审核被拒时退回 drive.file + Google 选择器（代码已保留）和“文件”App 导入。Google 授权页名称暂用 QAR Music，因为 Google 拒绝 “Closure” 这个名字。
+
+  - id: library.dedupe
+    title: 按内容去重：导入时跳过已有文件，清理已有的重复副本
+    category: library
+    priority: P1
+    platforms: { ios: done }
+    why: [用户要求（2026-11-16）；同一张专辑从“文件”App 和 Google Drive 各导入一次后出现三份]
+    acceptance:
+      - 只按内容（SHA-256）判断是否重复，不看文件名、标签或时长。先比大小，大小相同才计算哈希；哈希按路径、大小、修改时间缓存。
+      - 导入时跳过资料库里已有相同内容的音频文件；整张专辑都已存在时，连封面等附属文件一起跳过。导入结果显示“已在资料库中”的数量。
+      - Google Drive 用 Drive 提供的 SHA-256 在下载前比对，已有的文件不下载；Drive 没有提供哈希的文件在下载后由导入器比对。
+      - Finder 拖进 Documents 的重复文件从 Documents 移除（资料库里有完全相同的内容）。
+      - 路径相同但内容不同时两份都保留，新的一份以“名称 2”另存，不覆盖已有文件。
+      - 资料库有重复时显示“Duplicates”入口。每组默认保留专辑文件夹里、文件名最短的一份，用户可以改选；其余移到 Recently Deleted，30 天内可恢复。
+    notes: 不合并内容不同的“同一首歌”（不同格式、不同版本）。以后可以按标签和时长提示“可能重复”，由用户决定。
 
   - id: library.finder-transfer
     title: 通过 Finder 用数据线批量传歌
@@ -347,32 +390,33 @@ features:
     title: 文件不丢失，存储占用清楚
     category: library
     priority: P0
-    platforms: { ios: partial, macos: n/a }
+    platforms: { ios: done, macos: n/a }
     why: [reviews-2026-11（"离线文件凭空消失"，Evermusic、Flacbox）]
     acceptance:
       - App 更新后曲库完整，文件路径全部以相对路径保存。
       - 启动时发现缺失或损坏的文件，并告诉用户。
       - 设置中显示曲库占用空间。删除文件前要确认。
-    notes: 曲库目录已排除在 iCloud 设备备份之外。在 sync.backup 完成前，换机或丢机会丢失音乐，需要在界面上说明。
+    notes: iOS 完成（2026-11-16）。曲库目录排除在 iCloud 设备备份之外；Library Info 页显示占用并说明音乐不在 iCloud 备份里；删除前确认；路径全部相对。每次扫描后检查两类问题：引擎打不开的文件（不支持或损坏），以及不是用户删除的、从磁盘上消失的文件（移到 Recently Deleted 的不算）。首次发现时弹一次提示，可跳到 File Problems 页；读不了的文件可移到 Recently Deleted，缺失清单保存到用户清除为止。限制：只在读文件头时判断能否打开，文件头正常但中途截断的文件要到播放时才会报错。
 
   - id: library.database
     title: 用数据库保存曲库，替代 JSON 索引
     category: library
     priority: P0
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: done, macos: partial }
     acceptance:
       - 5 万首曲目时，读写和查询都不阻塞界面。
-    notes: iOS 原型用 library.json。macOS 用 library.xml。
+    notes: iOS 用系统 SQLite（WAL，批量事务写入，schema 版本号），旧的 library.json 在首次启动时迁移后删除（2026-11-16）。macOS 用 library.xml。
 
   - id: library.performance
     title: 大曲库下秒开，边扫描边播放
     category: library
     priority: P0
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: done, macos: planned }
     why: [reviews-2026-11（2 万首时每次点击都延迟数秒；必须扫描完才能播放）]
     acceptance:
       - 5 万首曲目时冷启动到可交互少于 1 秒（iPhone 12 级别设备）。
       - 增量扫描。扫描期间可以浏览和播放已识别的曲目。
+    notes: iOS 实测（iPhone 12 Pro，Debug 构建，2026-11-16）：50,017 首读库并分组 251–264 ms；有 5 万行时扫描（比对加删除）254 ms。读库、分组、扫描都在后台 actor，标签 4 个文件并发读取，扫描中约每秒刷新一次，可以边扫边浏览和播放。尚未用真实 5 万个文件测首次导入时的标签读取速度。
 
   - id: library.tag-parsing
     title: 宽容的标签解析，不乱码
@@ -384,42 +428,45 @@ features:
       - 支持 ID3v1/v2（含 GBK、Big5 等非 UTF-8 编码）、Vorbis comment、MP4 和 APE 标签。
       - 读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面、内嵌歌词。
       - 用一组故意写坏的标签样本做回归测试。
-    notes: iOS 原型只读 AVFoundation 的通用字段，FLAC 标签尚未验证。macOS 不读作曲家。
+    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3 的标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、作曲家、流派、合辑标记；ID3 中按 Latin-1 存放的 GBK/Big5 文本会被修复为中文，拉丁文名不受影响（2026-11-16，有随机往返测试：GB2312 全部修复，Big5 298/300）。尚未支持 APE 标签和 ID3v1，没有真实坏标签样本库。macOS 不读作曲家。
 
   - id: library.album-grouping
     title: 按专辑艺人归类，合辑不拆散，多碟顺序正确
     category: library
     priority: P0
-    platforms: { ios: partial, macos: done }
+    platforms: { ios: done, macos: done }
     why: [reviews-2026-11（按单曲艺人归类导致合辑被拆散；多碟顺序乱）]
     acceptance:
       - 合辑显示为一张专辑。多碟专辑按碟号、再按音轨号排序。
-    notes: iOS 原型按专辑名和文件夹归类，不读专辑艺人和碟号。macOS 以文件夹为专辑。
+    notes: iOS 有专辑艺人标签时按“专辑艺人 + 专辑”归类，否则按“专辑文件夹 + 专辑”（CD1/CD2 子目录算作上级目录）。按碟号、音轨号、文件名排序，多碟专辑显示碟号小标题（2026-11-16，有单元测试和模拟器验证）。macOS 以文件夹为专辑。
 
   - id: library.browse-sort
     title: 按艺人、专辑、流派、作曲家、年份浏览和排序，带字母索引
     category: library
     priority: P1
-    platforms: { ios: planned, macos: partial }
+    platforms: { ios: partial, macos: partial }
     why: [reviews-2026-11]
+    notes: iOS 有专辑、艺人、文件夹三个视图。专辑固定按艺人排序，还不能选择排序方式和字母索引。
 
   - id: library.search
     title: 全库搜索，支持中文和拼音首字母
     category: library
     priority: P1
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: partial, macos: planned }
     why: [reviews-2026-11（不能用中文搜索）]
     acceptance:
       - 可以按标题、艺人、专辑、作曲家搜索。输入"zjl"能找到"周杰伦"。
+    notes: iOS 可以按标题、艺人搜索，忽略大小写和变音符号。还不支持拼音首字母和作曲家。
 
   - id: library.artwork
     title: 封面优先用内嵌图片，绝不错配，可手动替换
     category: library
     priority: P1
-    platforms: { ios: planned, macos: done }
+    platforms: { ios: partial, macos: done }
     why: [reviews-2026-11（自动配错封面，或所有歌同一张）]
     acceptance:
       - 顺序：内嵌封面，文件夹内 cover/folder 图片，用户指定。不自动联网替换。
+    notes: iOS 可手动替换封面（2026-11-16）：从照片或文件选择，缩到最长 1500 px 存在 Application Support/Library/Covers，优先于文件夹图片和内嵌封面；可改回原封面。在线查找封面见 library.musicbrainz。
 
   - id: library.batch-ops
     title: 批量删除、批量加入歌单、批量收藏
@@ -432,23 +479,24 @@ features:
     title: 歌单、歌单文件夹、收藏
     category: library
     priority: P1
-    platforms: { ios: planned, macos: planned }
+    platforms: { ios: done, macos: planned }
     why: [reviews-2026-11（歌单不支持文件夹；离线歌单被收费）]
+    notes: iOS 完成（2026-11-16）。资料库新增 Playlists 标签；Favorites 为内置歌单（排第一，不能改名或删除）。歌曲、专辑长按菜单和正在播放页“…”菜单有 Add to Favorites / Remove from Favorites（单曲）和 Add to Playlist…（可在其中新建歌单），已有的歌不重复加。歌单页可播放、随机、改名、删除、Edit Order 拖动排序、左滑移除。数据在 schema 3 的 playlists / playlist_items 表，按歌曲路径记录；移到 Recently Deleted 的歌在歌单里暂时隐藏，恢复后回到原位。尚未做：歌单文件夹。
 
   - id: library.metadata-edit
     title: 在 App 内编辑标签
     category: library
     priority: P2
-    platforms: { ios: planned, macos: partial }
-    notes: macOS 可以修改专辑名、专辑艺人和封面。
+    platforms: { ios: partial, macos: partial }
+    notes: iOS 专辑级编辑完成（2026-11-16）：专辑页“…”→ Edit Album 可改标题、艺人、年份、封面。修改存进数据库 album_overrides 表（schema 2），按专辑原始分组键识别，不改文件和标签；“Restore Original”恢复标签值。尚未做：单曲标题等曲目级编辑。
 
   - id: library.musicbrainz
     title: 由用户触发的 MusicBrainz 元数据匹配
     category: library
-    priority: P2
-    platforms: { ios: planned, macos: done }
+    priority: P1
+    platforms: { ios: done, macos: done }
     why: [forums-2026-11（自动刮削）]
-    notes: 不在导入时自动联网。
+    notes: iOS 完成（2026-11-16）。专辑页“…”→ Find Info Online，由用户触发，不自动拉取：用专辑标题和艺人搜索 MusicBrainz（每秒最多 1 个请求，带 User-Agent；503 按 Retry-After 重试两次），按得分、曲目数是否一致、有无年份排序；结果显示 Cover Art Archive 缩略图。用户选中后可“使用标题、艺人、年份和封面”或“只用封面”，写入 album_overrides，可 Restore Original。不做声纹识别（AcoustID 商用收费、Chromaprint 许可证待核实、耗电）。隐私说明需写明会发送专辑名和艺人名。中文音乐收录较少，由手动换封面兜底。
 
   # ---------------------------------------------------------------- 歌词
 
@@ -456,16 +504,17 @@ features:
     title: 显示内嵌歌词和 .lrc 歌词，支持逐行同步
     category: lyrics
     priority: P1
-    platforms: { ios: planned, macos: done }
+    platforms: { ios: done, macos: done }
     why: [forums-2026-11]
+    notes: iOS 完成（2026-11-16）。正在播放页点封面切换歌词，再点切回，布局不动。来源依次是同名 .lrc 文件（随专辑导入）和标签（ID3 USLT、MP4 ©lyr、Vorbis LYRICS）。LRC 支持一行多个时间戳、[offset]、逐字时间戳（忽略）；.lrc 编码依次识别 UTF-8、UTF-16、GBK/Big5。逐行同步：当前句墨色并滚动到中间，点某句从该句前 1 秒开始播放；手动滚动时暂停跟随，停下 3 秒后回到当前句；无时间戳的按纯文本显示。中文用系统字体显示，待定中文字体（见设计待定项）。
 
   - id: lyrics.online
     title: 在线匹配歌词（LRCLIB）
     category: lyrics
     priority: P2
-    platforms: { ios: planned, macos: done }
+    platforms: { ios: done, macos: done }
     why: [forums-2026-11]
-    notes: 有开发者称在线歌词会因版权被 App Store 拒绝，但也有已上架 App 提供此功能。开发前先查审核指南。
+    notes: iOS 完成（2026-11-16），由用户触发：Find Album Info 应用候选后，为没有歌词的曲目逐首查 LRCLIB；歌词页“No lyrics”时可单独 Find Lyrics Online。先按歌名、艺人、专辑、时长精确查，查不到再搜索并只取时长相差 3 秒以内的结果，优先带时间轴的。存在 Application Support/Library/Lyrics，不写进音乐文件夹；读取顺序是用户的 .lrc、标签、在线获取。手机语言为简体中文时，在线获取的繁体歌词用系统转换显示为简体。版权：LRCLIB 为用户上传，付费 App 使用属于灰色地带，用户已知悉并同意（2026-11-16）。
 
   - id: lyrics.lock-screen
     title: 锁屏显示当前一句歌词

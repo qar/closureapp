@@ -1,0 +1,8 @@
+Papermoon is a local music player. It plays audio files the user adds to the app (FLAC, ALAC, AAC, MP3 and other formats the system decodes) and keeps the library in a local SQLite database. There is no account, no login and no demo credentials. It is a paid app with no in-app purchases.
+
+How to test
+
+1. Open the app. The Library is empty on first launch.
+2. Add music with the "+" button: choose files from the Files app, or sign in to Google Drive to download a folder (optional; the app only reads files the user picks).
+3. Tap an album, then a track. Playback, lyrics (from a .lrc file next to the track or from the tags) and the play-mode button are on the Now Playing screen.
+4. "Find Info Online" in an album's "..." menu asks MusicBrainz for album details and LRCLIB for lyrics. It only runs when the user taps it.
