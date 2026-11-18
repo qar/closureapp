@@ -526,6 +526,28 @@ void testResampling()
     check(std::abs(peak - 0.5f) < 0.005f, "resampled level is kept (peak " + std::to_string(peak) + ")");
 }
 
+void testRateChangeKeepsPosition()
+{
+    const auto path = writeFloatWav("route-rate-change.wav", 44100.0, 1, rampMono(44100 * 3));
+    check(!path.empty(), "create route-change test file");
+    PlaybackEngine engine(offlineOptions());
+    check(engine.setOutputSampleRate(44100.0), "set initial hardware rate");
+    engine.setQueue({ path });
+    check(engine.play(), "start before route change");
+    std::vector<float> first(44100 * 2);
+    check(engine.renderOffline(first.data(), 44100) == 44100, "render first second");
+    const auto before = engine.status();
+
+    check(engine.setOutputSampleRate(48000.0), "change hardware rate");
+    const auto after = engine.status();
+    check(after.playing && after.trackIndex == before.trackIndex, "playback continues on the same track");
+    check(std::abs(after.positionSeconds - before.positionSeconds) < 0.02, "route change keeps position");
+    check(after.outputSampleRate == 48000.0, "new hardware rate is active");
+    std::vector<float> next(4800 * 2);
+    check(engine.renderOffline(next.data(), 4800) == 4800, "render after route change");
+    check(next[0] > 0.03f, "playback resumes near the former position");
+}
+
 void testAacPrimingIsTrimmed()
 {
     const double rate = 44100.0;
@@ -614,6 +636,7 @@ int main(int argc, char** argv)
     run("repeat modes", testRepeatModes);
     run("replace queue keeps the current track playing", testReplaceQueueKeepsTheCurrentTrackPlaying);
     run("high quality resampling", testResampling);
+    run("route sample rate change keeps position", testRateChangeKeepsPosition);
     run("AAC priming is trimmed", testAacPrimingIsTrimmed);
     run("missing file is skipped", testMissingFileIsSkipped);
     if (bench)
