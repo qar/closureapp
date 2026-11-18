@@ -548,10 +548,18 @@ features:
   - id: integration.carplay
     title: CarPlay
     category: integration
-    priority: P1
-    platforms: { ios: planned }
+    priority: P0
+    platforms: { ios: partial }
     why: [reviews-2026-11（系统集成 19 条，14 个 App）, forums-2026-11]
-    notes: 需要先向 Apple 申请 CarPlay 音频 entitlement，审批需要时间，应尽早申请。
+    acceptance:
+      - CarPlay 可浏览全部本地专辑、歌单及其中的歌曲，列表超过系统上限时仍可翻页访问。
+      - 在车载屏幕选曲后，手机和 CarPlay 显示相同的歌曲、封面及播放状态。
+      - CarPlay 的播放、暂停、上一首、下一首和队列选曲控制有效；断开连接后手机继续保持正确状态。
+      - 获得 Apple CarPlay 音频 entitlement，并在 CarPlay 模拟器及实车完成验收。
+    notes: >-
+      首版 P0（用户于 2026-11-18 确定）。已接入 CarPlay 模板、专辑与歌单浏览、队列和系统正在播放界面。
+      Apple CarPlay 音频 entitlement 尚待通过 https://developer.apple.com/contact/request/carplay/ 申请并获批；
+      签名、CarPlay 模拟器及实车验收尚未完成，故保持 partial。
 
   - id: integration.shortcuts
     title: 快捷指令和 Siri 播放
