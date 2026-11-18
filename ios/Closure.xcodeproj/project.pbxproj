@@ -87,12 +87,14 @@
 		BFDF550116488CD1AEC45ECC /* DriveDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE70238AA425512DDA4B2885 /* DriveDownloadManager.swift */; };
 		C27D08B2DD92961D36D65C3E /* TrackOverrideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C284E40299029FDB9E1FA5B5 /* TrackOverrideTests.swift */; };
 		C61562FAC5E91965DD5C799B /* LibraryScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = C201361B3A4010595107559F /* LibraryScreens.swift */; };
+		C7940FFF01B78F6A71285428 /* AudioSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECE9A2A1CD9BB7795EC3BB1 /* AudioSessionController.swift */; };
 		C7A1AFB9705E7CA79F8E9970 /* ClosureApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82DE8743762F3E2C3E5F7445 /* ClosureApp.swift */; };
 		C83942C50A20B6E515BCAE55 /* DownloadJobTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77250D1D1B60010A2E27B0A8 /* DownloadJobTests.swift */; };
 		C941E3D2B21BC23B02ABEE35 /* LibrarySearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CB5FC0F3A63529FC00068 /* LibrarySearchIndex.swift */; };
 		CB203BCF69D033E54B16E360 /* FoldersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B25BA427718518C4871455 /* FoldersView.swift */; };
 		D1BA499C02446AB837AC7BD0 /* TrackEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BF0077742C81BCC58D7CE68 /* TrackEditView.swift */; };
 		D3A41B56734B17F172682836 /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886C1DC06E830235CE56CDD7 /* Playlist.swift */; };
+		D3FBD804692FC5CC080C0166 /* AudioSessionControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302D0C27824E4D873B152369 /* AudioSessionControllerTests.swift */; };
 		D53D0F4E457E8FC0F67BDDA5 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59FA3F362CA0004A30C1C22 /* LyricsView.swift */; };
 		DA3AFD06722EF4699DFF2D67 /* FileProblems.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD1031222B98F853B2F2E47A /* FileProblems.swift */; };
 		DBEA9F2D4408E48956CE4780 /* LibraryCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB01DF79C8590474E4AF68C4 /* LibraryCatalog.swift */; };
@@ -123,6 +125,7 @@
 		26FB9D34F80332C29B1AAF5B /* GoogleDriveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveTests.swift; sourceTree = "<group>"; };
 		29116CF7CE53BA85BD5C9063 /* FileImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileImporter.swift; sourceTree = "<group>"; };
 		2AEF5DEA2EF7C39A8CA121A5 /* ClosureMono-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "ClosureMono-OFL.txt"; sourceTree = "<group>"; };
+		302D0C27824E4D873B152369 /* AudioSessionControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionControllerTests.swift; sourceTree = "<group>"; };
 		3166E539A39685B9E8995117 /* PlaybackEngine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PlaybackEngine.cpp; sourceTree = "<group>"; };
 		327C7C84C11C5AA528C1DC8C /* CLSEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CLSEngine.h; sourceTree = "<group>"; };
 		33531E3983665A56AFC3E816 /* FileProblemsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProblemsView.swift; sourceTree = "<group>"; };
@@ -258,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				0FBBFFCB53119EC2696A1CAE /* AlbumOverrideTests.swift */,
+				302D0C27824E4D873B152369 /* AudioSessionControllerTests.swift */,
 				77250D1D1B60010A2E27B0A8 /* DownloadJobTests.swift */,
 				47EB5DDC09B0F8783BA014B3 /* DriveDownloadManagerTests.swift */,
 				0AE1A723F55F3468136013E5 /* DuplicateTests.swift */,
@@ -590,6 +594,8 @@
 				680BF1FC0207EB1DC5B8B50C /* AlbumOverrideTests.swift in Sources */,
 				56A4FE1B0F52D57096D7DA44 /* AlbumTitleParts.swift in Sources */,
 				AE176407798D4D80B38A4ABF /* ArtworkStore.swift in Sources */,
+				C7940FFF01B78F6A71285428 /* AudioSessionController.swift in Sources */,
+				D3FBD804692FC5CC080C0166 /* AudioSessionControllerTests.swift in Sources */,
 				2481DA047909C4A69DCD7814 /* ContentIndex.swift in Sources */,
 				7A388DCFC801E702B36F584E /* DownloadJob.swift in Sources */,
 				C83942C50A20B6E515BCAE55 /* DownloadJobTests.swift in Sources */,
