@@ -104,6 +104,7 @@ actor ArtworkStore {
         if url.pathExtension.lowercased() == "flac", let data = FLACPicture.frontCover(in: url) {
             return data
         }
+        if let data = LegacyAudioTags.read(from: url).frontCover { return data }
         let asset = AVURLAsset(url: url)
         guard let items = try? await asset.load(.metadata) else { return nil }
         for item in items where item.commonKey == .commonKeyArtwork {

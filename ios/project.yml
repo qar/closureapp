@@ -61,6 +61,7 @@ targets:
       - path: Closure/Library/AlbumTitleParts.swift
       - path: Closure/Library/ArtworkStore.swift
       - path: Closure/Library/LibraryModels.swift
+      - path: Closure/Library/LegacyAudioTags.swift
       - path: Closure/Library/LibrarySearchIndex.swift
       - path: Closure/Library/TrashStore.swift
       - path: Closure/Library/LibraryDatabase.swift

@@ -16,6 +16,7 @@ enum TrackReader {
                                      data: try? await item.load(.dataValue)))
             }
         }
+        items += LegacyAudioTags.read(from: url).items
         let tags = TagParser.parse(items)
         let fileName = url.deletingPathExtension().lastPathComponent
         let parentName = url.deletingLastPathComponent().lastPathComponent

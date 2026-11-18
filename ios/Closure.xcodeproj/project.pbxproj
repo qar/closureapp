@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		001FD6212971D79509EBC1B2 /* LegacyAudioTags.swift in Sources */ = {isa = PBXBuildFile; fileRef = B935D30BCAFAF8E393A1389F /* LegacyAudioTags.swift */; };
 		02479C76728636A877812A44 /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAD22F37336FC0E0AE65D929 /* NowPlayingView.swift */; };
 		02C2E6AC82FF3B89F367F0D8 /* PlaybackState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD12CF62F89A058929E38B9E /* PlaybackState.swift */; };
 		07FFFDB5C367257D2943D0DA /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B56CB195568A60206620F49F /* PrivacyInfo.xcprivacy */; };
@@ -61,6 +62,7 @@
 		8DE565147A3D3280A332E6FA /* TrashStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D194D71EFA5606BC13FC6E5 /* TrashStoreTests.swift */; };
 		8E31684136D041DE5B9B3B2E /* TrashStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7D52957A176EB1FF987C62 /* TrashStore.swift */; };
 		9105C95075D96777B12CA2C2 /* DriveBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E141F6BEB2104B9CB805ED01 /* DriveBrowserView.swift */; };
+		92D1BEC0E35C6F623DF2612A /* LegacyAudioTags.swift in Sources */ = {isa = PBXBuildFile; fileRef = B935D30BCAFAF8E393A1389F /* LegacyAudioTags.swift */; };
 		94295DFA171D9FF754F96315 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7646CEBEEB96A9FD93E12DCE /* LibraryStore.swift */; };
 		969B3A99D0DC2E2682B9C5B3 /* ArtworkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F85022148CE67634ACCA36C5 /* ArtworkStore.swift */; };
 		96A3929BA153DC7559F31F71 /* GoogleDriveAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B2C977ECCDD9BCEB0CA8EE /* GoogleDriveAccount.swift */; };
@@ -76,6 +78,7 @@
 		AF34AB53C92043BAF165FEF3 /* FileImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29116CF7CE53BA85BD5C9063 /* FileImporter.swift */; };
 		B121AE683F0DA04F6C102E22 /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5B3B300C98D2F04368EA8E /* LibraryModels.swift */; };
 		BA66A2889C3178E07E3C1A3F /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9A887AA529F2489C646926 /* LibraryView.swift */; };
+		BB064078F2EF4ECB3D4506DE /* LegacyAudioTagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AA89F21B99B42841CD1741E /* LegacyAudioTagsTests.swift */; };
 		BC7408555B0C5B6BAE745DDA /* Lyrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD3DCDE3BF80277706035D95 /* Lyrics.swift */; };
 		BFDF550116488CD1AEC45ECC /* DriveDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE70238AA425512DDA4B2885 /* DriveDownloadManager.swift */; };
 		C61562FAC5E91965DD5C799B /* LibraryScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = C201361B3A4010595107559F /* LibraryScreens.swift */; };
@@ -129,6 +132,7 @@
 		55D0177635A19B97548CD4A5 /* AlbumEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumEditView.swift; sourceTree = "<group>"; };
 		55FEE478197C053011CC7D16 /* FrameRing.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FrameRing.h; sourceTree = "<group>"; };
 		58B2C977ECCDD9BCEB0CA8EE /* GoogleDriveAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveAccount.swift; sourceTree = "<group>"; };
+		5AA89F21B99B42841CD1741E /* LegacyAudioTagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyAudioTagsTests.swift; sourceTree = "<group>"; };
 		67B25BA427718518C4871455 /* FoldersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoldersView.swift; sourceTree = "<group>"; };
 		73C730F54FBA88AD4A1F774E /* LibraryInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryInfoView.swift; sourceTree = "<group>"; };
 		7646CEBEEB96A9FD93E12DCE /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
@@ -159,6 +163,7 @@
 		B11D68482A3BD77D90E0439E /* PlaybackStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackStateTests.swift; sourceTree = "<group>"; };
 		B56CB195568A60206620F49F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B8772C6C480B7DE6849E0F33 /* FileImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileImporterTests.swift; sourceTree = "<group>"; };
+		B935D30BCAFAF8E393A1389F /* LegacyAudioTags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyAudioTags.swift; sourceTree = "<group>"; };
 		C142CC4ECE369F74537D9B6C /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
 		C201361B3A4010595107559F /* LibraryScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreens.swift; sourceTree = "<group>"; };
 		C2B128923EBA03CA890900CC /* AlbumOverride.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumOverride.swift; sourceTree = "<group>"; };
@@ -244,6 +249,7 @@
 				0AE1A723F55F3468136013E5 /* DuplicateTests.swift */,
 				B8772C6C480B7DE6849E0F33 /* FileImporterTests.swift */,
 				26FB9D34F80332C29B1AAF5B /* GoogleDriveTests.swift */,
+				5AA89F21B99B42841CD1741E /* LegacyAudioTagsTests.swift */,
 				E4E4400F4976C29908FBF37E /* LibraryDatabaseTests.swift */,
 				3CA108D7488A1264499594EA /* LibraryLogicTests.swift */,
 				48AAA9A313C8EA1A99C0F0C9 /* LibrarySearchIndexTests.swift */,
@@ -325,6 +331,7 @@
 				DD1031222B98F853B2F2E47A /* FileProblems.swift */,
 				7EAF3D7E74544716258FA184 /* GoogleDrive.swift */,
 				58B2C977ECCDD9BCEB0CA8EE /* GoogleDriveAccount.swift */,
+				B935D30BCAFAF8E393A1389F /* LegacyAudioTags.swift */,
 				FB01DF79C8590474E4AF68C4 /* LibraryCatalog.swift */,
 				F6E52B6FA8C45804125E9DE0 /* LibraryDatabase.swift */,
 				AA5B3B300C98D2F04368EA8E /* LibraryModels.swift */,
@@ -525,6 +532,7 @@
 				CB203BCF69D033E54B16E360 /* FoldersView.swift in Sources */,
 				3C92A46C23BE4163AF62B459 /* GoogleDrive.swift in Sources */,
 				96A3929BA153DC7559F31F71 /* GoogleDriveAccount.swift in Sources */,
+				001FD6212971D79509EBC1B2 /* LegacyAudioTags.swift in Sources */,
 				DBEA9F2D4408E48956CE4780 /* LibraryCatalog.swift in Sources */,
 				88BF5397F9C4E8F310BD51EA /* LibraryDatabase.swift in Sources */,
 				4590DF50A63DE682B321FCBA /* LibraryInfoView.swift in Sources */,
@@ -569,6 +577,8 @@
 				DA3AFD06722EF4699DFF2D67 /* FileProblems.swift in Sources */,
 				31A8D30400C02ADC083FC56C /* GoogleDrive.swift in Sources */,
 				A033F16CAAC06A4638F0007D /* GoogleDriveTests.swift in Sources */,
+				92D1BEC0E35C6F623DF2612A /* LegacyAudioTags.swift in Sources */,
+				BB064078F2EF4ECB3D4506DE /* LegacyAudioTagsTests.swift in Sources */,
 				E9278A214966E2DAEE80808F /* LibraryDatabase.swift in Sources */,
 				ADD97AC5A3F42DBF6140B3CF /* LibraryDatabaseTests.swift in Sources */,
 				A87D15FDDB89439DAB7D7EE1 /* LibraryLogicTests.swift in Sources */,

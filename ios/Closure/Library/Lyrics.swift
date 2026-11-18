@@ -124,6 +124,9 @@ enum LyricsLoader {
            let text = Lyrics.decode(data), let lyrics = Lyrics.parse(text) {
             return lyrics
         }
+        if let text = LegacyAudioTags.read(from: url).lyrics, let lyrics = Lyrics.parse(text) {
+            return lyrics
+        }
         guard let items = try? await AVURLAsset(url: url).load(.metadata) else { return nil }
         for item in items where tagIDs.contains(item.identifier?.rawValue ?? "") {
             if var text = try? await item.load(.stringValue) {

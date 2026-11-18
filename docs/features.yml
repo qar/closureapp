@@ -422,13 +422,13 @@ features:
     title: 宽容的标签解析，不乱码
     category: library
     priority: P0
-    platforms: { ios: partial, macos: partial }
+    platforms: { ios: done, macos: partial }
     why: [reviews-2026-11（标签读错、文件名乱码、俄语乱码）, forums-2026-11]
     acceptance:
       - 支持 ID3v1/v2（含 GBK、Big5 等非 UTF-8 编码）、Vorbis comment、MP4 和 APE 标签。
       - 读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面、内嵌歌词。
       - 用一组故意写坏的标签样本做回归测试。
-    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3 的标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、作曲家、流派、合辑标记；ID3 中按 Latin-1 存放的 GBK/Big5 文本会被修复为中文，拉丁文名不受影响（2026-11-16，有随机往返测试：GB2312 全部修复，Big5 298/300）。尚未支持 APE 标签和 ID3v1，没有真实坏标签样本库。macOS 不读作曲家。
+    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3v2，以及支持的音频文件末尾的 ID3v1、APEv2 标签。读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面和歌词。ID3 中按 Latin-1 存放的 GBK/Big5 文本会被修复为中文，拉丁文名不受影响。2026-11-18 加入故意使用 GBK 字节、损坏 APEv2 长度和两种标签冲突的回归样本。APE 音频解码仍见 format.ape（P3）。macOS 不读作曲家。
 
   - id: library.album-grouping
     title: 按专辑艺人归类，合辑不拆散，多碟顺序正确
