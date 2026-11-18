@@ -100,7 +100,9 @@ final class DriveDownloadManagerTests: XCTestCase {
 
     func testTimeoutsAreRetriedUntilTheFileArrives() async {
         var calls = 0
-        DownloadMockProtocol.reply = { _ in
+        DownloadMockProtocol.reply = { request in
+            // The previous test cancels downloads; their URLProtocol callbacks may still arrive.
+            guard request.url?.path == "/drive/v3/files/a" else { return .fail(.cancelled) }
             calls += 1
             return calls < 3 ? .fail(.timedOut) : .ok(Data("FLAC".utf8))
         }
@@ -111,6 +113,7 @@ final class DriveDownloadManagerTests: XCTestCase {
         let item = manager.job?.items.first
         XCTAssertEqual(item?.state, .imported)
         XCTAssertEqual(item?.attempts, 3)
+        XCTAssertEqual(DownloadMockProtocol.mediaRequests(for: "a"), 3)
         XCTAssertEqual(imported, [["files/01.flac"]])
         XCTAssertEqual(manager.importedAudioCount, 1)
         XCTAssertNil(manager.problem)
