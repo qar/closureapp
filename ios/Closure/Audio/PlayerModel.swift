@@ -178,6 +178,7 @@ final class PlayerModel {
             try engine.play()
             isPlaying = true
         } catch {
+            pendingPosition = position
             lastError = error.localizedDescription
             isPlaying = false
         }
@@ -296,13 +297,14 @@ final class PlayerModel {
             start(at: currentIndex, position: pendingPosition)
             return
         }
+        let position = engine.status.positionSeconds
         do {
             try session.activate()
-            syncOutputRate()
+            try syncOutputRate()
             try engine.play()
             isPlaying = true
         } catch {
-            lastError = error.localizedDescription
+            outputFailed(error, resumeAt: position)
         }
         updateNowPlaying()
     }
@@ -390,11 +392,20 @@ final class PlayerModel {
     }
 
     /// Re-opens the output when the hardware rate changed (e.g. a new route).
-    private func syncOutputRate() {
+    private func syncOutputRate() throws {
         let hardwareRate = session.sampleRate
-        if abs(engine.status.outputSampleRate - hardwareRate) > 0.5 {
-            try? engine.setOutputSampleRate(hardwareRate)
+        if hardwareRate > 0, abs(engine.status.outputSampleRate - hardwareRate) > 0.5 {
+            try engine.setOutputSampleRate(hardwareRate)
         }
+    }
+
+    private func outputFailed(_ error: Error, resumeAt position: Double) {
+        lastError = error.localizedDescription
+        engine.pause()
+        pendingPosition = position
+        isPlaying = false
+        updateNowPlaying()
+        saveState()
     }
 
     private func wireSession() {
@@ -410,19 +421,24 @@ final class PlayerModel {
         }
         session.onOutputLost = { [weak self] in
             // Never move playback to the speaker on its own.
+            self?.resumeAfterInterruption = false
             self?.pause()
         }
         session.onRouteChanged = { [weak self] in
-            self?.syncOutputRate()
+            guard let self else { return }
+            let position = engine.status.positionSeconds
+            do { try syncOutputRate() } catch { outputFailed(error, resumeAt: position) }
         }
         session.onMediaServicesReset = { [weak self] in
             guard let self else { return }
             // The output unit is gone. Rebuild it at the current hardware rate.
             // The engine resumes on its own if it was playing.
+            let position = engine.status.positionSeconds
             engine.resetOutput()
-            if (try? session.activate()) != nil {
-                try? engine.setOutputSampleRate(session.sampleRate)
-            }
+            do {
+                try session.activate()
+                try syncOutputRate()
+            } catch { outputFailed(error, resumeAt: position) }
         }
     }
 
@@ -467,26 +483,18 @@ final class PlayerModel {
     private func updateNowPlaying() {
         guard let track = currentTrack else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            MPNowPlayingInfoCenter.default().playbackState = .stopped
             return
         }
 
         let status = engine.status
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: track.title,
-            MPMediaItemPropertyPlaybackDuration: status.durationSeconds > 0 ? status.durationSeconds : track.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: status.positionSeconds,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyPlaybackQueueIndex: currentIndex,
-            MPNowPlayingInfoPropertyPlaybackQueueCount: queue.count,
-        ]
-        if !track.artist.isEmpty { info[MPMediaItemPropertyArtist] = track.artist }
-        if !track.album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = track.album }
-        if let cached = nowPlayingArtwork, cached.key == track.artworkRequest.key {
-            info[MPMediaItemPropertyArtwork] = cached.artwork
-        } else {
-            loadArtwork(for: track)
-        }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let artwork = nowPlayingArtwork?.key == track.artworkRequest.key ? nowPlayingArtwork?.artwork : nil
+        let snapshot = NowPlayingSnapshot.make(track: track, position: pendingPosition ?? status.positionSeconds,
+                                               duration: status.durationSeconds, isPlaying: isPlaying,
+                                               queueIndex: currentIndex, queueCount: queue.count, artwork: artwork)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = snapshot.info
+        MPNowPlayingInfoCenter.default().playbackState = snapshot.playbackState
+        if artwork == nil { loadArtwork(for: track) }
     }
 
     private func loadArtwork(for track: Track) {
@@ -494,7 +502,7 @@ final class PlayerModel {
         let request = track.artworkRequest
         artworkTask = Task { [weak self] in
             guard let image = await ArtworkStore.shared.image(for: request, pixelSize: 600),
-                  !Task.isCancelled, let self, self.currentTrack?.albumKey == track.albumKey else { return }
+                  !Task.isCancelled, let self, self.currentTrack?.artworkRequest.key == request.key else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             self.nowPlayingArtwork = (request.key, artwork)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]

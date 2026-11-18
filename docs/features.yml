@@ -119,7 +119,10 @@ features:
     acceptance:
       - 真机锁屏连续播放 4 小时，零中断、零欠载，重复 3 次。
       - 播放中切到其他 App、接收通知、低电量模式下不停播。
-    notes: 原型已实现，尚未做长时间真机测试。
+    notes: >-
+      iOS 已配置 audio 后台模式，音频会话使用 playback 类别；2026-11-18 改为激活时确认类别设置成功，
+      设置失败会报告播放错误。Entropy 当前可连续占用不足 4 小时，三轮各 4 小时锁屏播放、
+      切到其他 App、通知和低电量模式验收尚未完成，故保持 partial。
 
   - id: playback.interruptions
     title: 正确处理来电等打断和输出设备变化
@@ -131,7 +134,11 @@ features:
       - 来电结束后，按系统提示自动恢复播放。
       - 拔出耳机或断开蓝牙时暂停，不转到扬声器播放。
       - 硬件采样率变化后，从原位置继续播放。
-    notes: iOS 已实现，尚未在真机上逐项验证。macOS 已有 DefaultOutputFollower。
+    notes: >-
+      iOS 已处理系统打断、输出设备丢失和采样率变化。2026-11-18 补齐设备丢失时清除自动续播标记，
+      并在输出重建失败时停止播放、报告错误并保留重试位置；内核测试确认采样率变化后保留曲目与位置。
+      Entropy 已安装调试版并自动启动播放。来电、耳机及蓝牙真机验收按用户要求改天进行，故保持 partial。
+      macOS 已有 DefaultOutputFollower。
 
   - id: playback.now-playing
     title: 锁屏、控制中心、耳机按键控制，并显示封面
@@ -142,7 +149,10 @@ features:
     acceptance:
       - 锁屏和控制中心显示标题、艺人、专辑、封面和进度。
       - 播放、暂停、上一首、下一首、拖动进度都有效。
-    notes: iOS 已显示标题、艺人、专辑、封面和进度（2026-11-16）。尚未在真机上逐项验证锁屏和耳机按键。
+    notes: >-
+      iOS 已发布标题、艺人、专辑、封面、进度和播放状态，并接入播放、暂停、上一首、下一首与拖动进度命令。
+      2026-11-18 增加系统信息快照测试及旧封面切歌保护。锁屏、控制中心和耳机按键尚未逐项真机验收，
+      故保持 partial。
 
   - id: playback.declick
     title: 开始、暂停、跳转时不爆音
@@ -233,12 +243,15 @@ features:
     title: 文件保持导入时的结构，整理全部在软件层面完成
     category: library
     priority: P0
-    platforms: { ios: partial, macos: done }
+    platforms: { ios: done, macos: done }
     acceptance:
       - 导入后，文件夹名、文件名、目录结构与来源相同。
       - 编辑标签、合并或拆分专辑、歌单和收藏只改数据库，不改文件。
       - 文件只在用户明确操作时才变化（删除、在文件夹视图中移动或重命名）。
-    notes: iOS 已保持结构。标签编辑尚未实现，见 library.metadata-edit。
+    notes: >-
+      2026-11-18：导入保持原目录层级；专辑和曲目标签编辑、专辑合并及拆分、歌单和收藏
+      均只写 SQLite，不改音频文件。测试覆盖数据库重载后的分组及文件内容不变。
+      来源路径发生同名冲突时，导入器会给新文件名加序号以避免覆盖原文件。
 
   - id: library.companion-files
     title: 封面、歌词、CUE 等附属文件随音频一起导入
@@ -261,7 +274,11 @@ features:
       - 先拷进暂存区并校验大小和哈希，整张专辑一次性移入曲库。中断后可以继续。
       - 来自 iCloud Drive 的未下载文件先下载再导入。
       - 导入结束后报告导入了什么、跳过了什么、为什么。
-    notes: iOS 已实现（2026-11-16）：导入在后台进行；先算总大小，空间不足（含 200 MB 余量）时不复制并提示差多少；从“文件”App 复制时边复制边算 SHA-256，读回校验后才整批移入曲库，校验失败的文件不进曲库；已校验的暂存带清单，下次启动续完，未校验的丢弃；收件箱只移除成功进入曲库的文件。通过 NSFileCoordinator 读取以触发 iCloud 下载，这一点尚未在真机的 iCloud Drive 上验证。
+    notes: >-
+      2026-11-18 已补齐整批校验、大小及 SHA-256 校验、空间检查和中断恢复。
+      新专辑以目录重命名一次提交；已有目录记录目标路径，失败时回滚，重启后续完。
+      Finder 来源在整批成功后才删除。单元测试覆盖损坏复制、提交失败和两种恢复路径。
+      iCloud Drive 未下载文件仍需真机验证，故保持 partial。
 
   - id: library.target-folder
     title: 导入时选择放进曲库中的哪个文件夹
@@ -422,13 +439,13 @@ features:
     title: 宽容的标签解析，不乱码
     category: library
     priority: P0
-    platforms: { ios: partial, macos: partial }
+    platforms: { ios: done, macos: partial }
     why: [reviews-2026-11（标签读错、文件名乱码、俄语乱码）, forums-2026-11]
     acceptance:
       - 支持 ID3v1/v2（含 GBK、Big5 等非 UTF-8 编码）、Vorbis comment、MP4 和 APE 标签。
       - 读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面、内嵌歌词。
       - 用一组故意写坏的标签样本做回归测试。
-    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3 的标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、作曲家、流派、合辑标记；ID3 中按 Latin-1 存放的 GBK/Big5 文本会被修复为中文，拉丁文名不受影响（2026-11-16，有随机往返测试：GB2312 全部修复，Big5 298/300）。尚未支持 APE 标签和 ID3v1，没有真实坏标签样本库。macOS 不读作曲家。
+    notes: iOS 读取 FLAC Vorbis comment、M4A、MP3 ID3v2，以及支持的音频文件末尾的 ID3v1、APEv2 标签。读取标题、艺人、专辑、专辑艺人、碟号、音轨号、年份、流派、作曲家、内嵌封面和歌词。ID3 中按 Latin-1 存放的 GBK/Big5 文本会被修复为中文，拉丁文名不受影响。2026-11-18 加入故意使用 GBK 字节、损坏 APEv2 长度和两种标签冲突的回归样本。APE 音频解码仍见 format.ape（P3）。macOS 不读作曲家。
 
   - id: library.album-grouping
     title: 按专辑艺人归类，合辑不拆散，多碟顺序正确
@@ -488,7 +505,9 @@ features:
     category: library
     priority: P2
     platforms: { ios: partial, macos: partial }
-    notes: iOS 专辑级编辑完成（2026-11-16）：专辑页“…”→ Edit Album 可改标题、艺人、年份、封面。修改存进数据库 album_overrides 表（schema 2），按专辑原始分组键识别，不改文件和标签；“Restore Original”恢复标签值。尚未做：单曲标题等曲目级编辑。
+    notes: >-
+      iOS 专辑级编辑可改标题、艺人、年份和封面；曲目级编辑可改标题、艺人、专辑、专辑艺人、
+      曲号、碟号、年份、作曲者和流派。修改只写数据库，不改文件标签。尚未覆盖所有格式专有字段。
 
   - id: library.musicbrainz
     title: 由用户触发的 MusicBrainz 元数据匹配
@@ -635,12 +654,16 @@ features:
     title: 一次性买断
     category: commerce
     priority: P0
-    platforms: { ios: planned, macos: n/a }
+    platforms: { ios: partial, macos: n/a }
     why: [reviews-2026-11（收费 37 条，近三年最多）]
     acceptance:
       - 购买、恢复购买、家人共享、退款后状态都经过测试。
       - 购买后不出现任何广告或捐款请求。
-    notes: macOS 版目前免费，通过 Sparkle 在 App Store 之外分发。
+    notes: >-
+      iOS 采用 App Store 付费下载，无 App 内购买、广告和捐款入口。
+      2026-11-18 已按用户选择将美国区基准价格设为 US$4.99，并从 App Store Connect 读回确认。
+      购买、重新下载、家庭共享和退款后的实际状态需待 App Store 可购买时测试。
+      macOS 版目前免费，通过 Sparkle 在 App Store 之外分发。
 
   # ---------------------------------------------------------------- 体验与无障碍
 

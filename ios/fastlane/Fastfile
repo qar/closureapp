@@ -39,7 +39,67 @@ def app_version
   spec.fetch("settings").fetch("base").fetch("MARKETING_VERSION").to_s
 end
 
+# App Store paid downloads are owned by Apple. The app has no StoreKit purchase
+# screen or receipt gate; a buyer restores access by downloading it again.
+def ensure_paid_app_price
+  app = Spaceship::ConnectAPI::App.find("com.qar.closure")
+  UI.user_error!("App Store record missing") if app.nil?
+  client = Spaceship::ConnectAPI.tunes_request_client
+  schedule = begin
+    client.get("v1/apps/#{app.id}/appPriceSchedule").body["data"]
+  rescue Spaceship::UnexpectedResponse => error
+    raise unless error.message.include?("does not exist")
+    nil
+  end
+  if schedule
+    response = begin
+      client.get("v1/appPriceSchedules/#{schedule.fetch('id')}/manualPrices",
+                 { include: "appPricePoint", limit: 200 }).body
+    rescue Spaceship::UnexpectedResponse => error
+      raise unless error.message.include?("does not exist")
+      nil
+    end
+    if response
+      points = response.fetch("included", []).to_h { |item| [item["id"], item.dig("attributes", "customerPrice")] }
+      current = response.fetch("data", []).find { |price| price.dig("attributes", "endDate").nil? }
+      point = points[current&.dig("relationships", "appPricePoint", "data", "id")]
+      if point.to_f == 4.99
+        UI.success("App Store download price is US$4.99")
+        return
+      end
+    end
+  end
+
+  response = client.get("v1/apps/#{app.id}/appPricePoints",
+                        { filter: { territory: "USA" }, limit: 200 }).body
+  point = response.fetch("data").find { |item| item.dig("attributes", "customerPrice").to_f == 4.99 }
+  UI.user_error!("US$4.99 price point unavailable") if point.nil?
+  price_id = "${papermoon-us-price}"
+  client.post("v1/appPriceSchedules", {
+    data: {
+      type: "appPriceSchedules",
+      relationships: {
+        app: { data: { type: "apps", id: app.id } },
+        baseTerritory: { data: { type: "territories", id: "USA" } },
+        manualPrices: { data: [{ type: "appPrices", id: price_id }] }
+      }
+    },
+    included: [{
+      type: "appPrices", id: price_id,
+      attributes: { startDate: nil, endDate: nil },
+      relationships: { appPricePoint: { data: { type: "appPricePoints", id: point.fetch("id") } } }
+    }]
+  })
+  UI.success("Set App Store download price to US$4.99")
+end
+
 platform :ios do
+  desc "Set the one-time App Store download price to US$4.99"
+  lane :set_paid_price do
+    require_api_key!
+    ensure_paid_app_price
+  end
+
   # Creates the App Store Connect record (and the App ID if it is missing), which
   # reserves the name. Apple offers no API for creating apps, so this signs in with
   # the Apple ID and asks for the password and a two-factor code.

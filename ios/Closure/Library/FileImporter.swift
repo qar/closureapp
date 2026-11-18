@@ -10,12 +10,11 @@ import Foundation
 /// - Anything else stays where it is and is reported.
 /// - A folder without audio is left alone completely.
 ///
-/// Copies (from the Files app) go through a staging folder: each file is copied with
+/// Imports go through a staging folder: each file is copied with
 /// a SHA-256 of the source, read back and compared, and only a fully verified folder is
 /// moved into the library. A manifest marks a verified staging folder, so an import
 /// interrupted after verification finishes on the next launch; anything unverified is
-/// discarded (the source is untouched). Before copying, the total size is checked
-/// against the free space.
+/// discarded (the source is untouched). Finder sources leave Documents after commit.
 ///
 /// With a content index, a file whose exact content (SHA-256) is already in the library
 /// is skipped and reported as a duplicate. Names are never compared.
@@ -23,7 +22,7 @@ struct FileImporter {
     enum Mode {
         /// From the Files app: the source belongs to the user and is never changed.
         case copy
-        /// From the app's Documents inbox: transferred files leave the inbox.
+        /// From the app's Documents inbox: transferred files leave after verification.
         case move
     }
 
@@ -74,6 +73,8 @@ struct FileImporter {
     var availableSpace: () -> Int64?
     /// Test hook: called after a file is staged and before it is verified.
     var afterStaging: ((URL) -> Void)?
+    /// Test hook: called before a verified item enters the library.
+    var beforeCommitMove: ((URL, URL) throws -> Void)?
     /// Finds content already in the library. Without it, nothing is treated as a duplicate.
     var contentIndex: ContentIndex?
     private let fileManager = FileManager.default
@@ -177,16 +178,20 @@ struct FileImporter {
         let duplicateAudio = Set(audio.filter { isInLibrary($0) })
         if !audio.isEmpty, duplicateAudio.count == audio.count {
             report.duplicates = audio.map { folder.lastPathComponent + "/" + relativePath(of: $0, in: folder) }
-            if mode == .move { for file in audio { try? fileManager.removeItem(at: file) } }
+            if mode == .move {
+                for file in files where Self.kind(of: file) != .other { try? fileManager.removeItem(at: file) }
+                removeEmptyDirectories(in: folder)
+            }
             return report
         }
 
         var staged: [(source: URL, relative: String)] = []
+        var skipped: [URL] = []
         for file in files {
             let kind = Self.kind(of: file)
             if duplicateAudio.contains(file) {
                 report.duplicates.append(folder.lastPathComponent + "/" + relativePath(of: file, in: folder))
-                if mode == .move { try? fileManager.removeItem(at: file) }
+                skipped.append(file)
                 continue
             }
             switch kind {
@@ -194,28 +199,23 @@ struct FileImporter {
                 let relative = folder.lastPathComponent + "/" + relativePath(of: file, in: folder)
                 // A cover or lyrics file identical to one already beside it is not copied again.
                 if kind == .companion, isAlreadyBeside(file, at: relative) {
-                    if mode == .move { try? fileManager.removeItem(at: file) }
+                    skipped.append(file)
                     continue
                 }
-                if mode == .move {
-                    if move(file, to: libraryRoot.appendingPathComponent(relative)) != nil {
-                        if kind == .audio { report.audioFiles += 1 } else { report.companionFiles += 1 }
-                    } else {
-                        report.failed.append(relative)
-                    }
-                } else {
-                    staged.append((file, relative))
-                }
+                staged.append((file, relative))
             case .junk:
-                if mode == .move { try? fileManager.removeItem(at: file) }
+                skipped.append(file)
             case .other:
                 if mode == .move { report.leftInPlace.append(relativePath(of: file, in: folder.deletingLastPathComponent())) }
             }
         }
 
-        if mode == .copy {
-            report.merge(copyThroughStaging(staged))
-        } else {
+        let stagedReport = copyThroughStaging(staged)
+        if mode == .move, stagedReport.failed.isEmpty, stagedReport.spaceShortfall == nil {
+            for file in staged.map(\.source) + skipped { try? fileManager.removeItem(at: file) }
+        }
+        report.merge(stagedReport)
+        if mode == .move {
             removeEmptyDirectories(in: folder)
         }
         return report
@@ -231,13 +231,9 @@ struct FileImporter {
             if mode == .move { try? fileManager.removeItem(at: file) }
         case .audio:
             let relative = Self.looseFilesFolder + "/" + file.lastPathComponent
-            if mode == .copy {
-                return copyThroughStaging([(file, relative)])
-            }
-            if move(file, to: libraryRoot.appendingPathComponent(relative)) != nil {
-                report.audioFiles += 1
-            } else {
-                report.failed.append(file.lastPathComponent)
+            report = copyThroughStaging([(file, relative)])
+            if mode == .move, report.failed.isEmpty, report.spaceShortfall == nil {
+                try? fileManager.removeItem(at: file)
             }
         case .junk:
             if mode == .move { try? fileManager.removeItem(at: file) }
@@ -252,50 +248,164 @@ struct FileImporter {
 
     private struct Manifest: Codable {
         var files: [String]
+        var version: Int? = 2
+        var destinations: [String: String]? = nil
+        var atomicRoot: String? = nil
     }
 
-    /// Copies each file into a fresh staging folder and verifies it. Files that fail are
-    /// reported and left out; the rest are marked verified and moved into the library.
+    /// Stages every file in one picked folder. Any failed copy aborts the whole batch.
     private func copyThroughStaging(_ files: [(source: URL, relative: String)]) -> Report {
         guard !files.isEmpty else { return Report() }
         var report = Report()
+        let needed = files.reduce(Int64(0)) { total, file in
+            total + Int64((try? file.source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        if let free = availableSpace(), needed + Self.spaceReserve > free {
+            report.spaceShortfall = needed + Self.spaceReserve - free
+            return report
+        }
         let batch = stagingRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        var verified: [String] = []
+        var failed = false
         for (source, relative) in files {
             let staged = batch.appendingPathComponent(relative)
-            if copyVerified(from: source, to: staged) {
-                verified.append(relative)
-            } else {
-                try? fileManager.removeItem(at: staged)
-                report.failed.append(relative)
-            }
+            if !copyVerified(from: source, to: staged) { failed = true }
         }
-        guard !verified.isEmpty,
-              let data = try? JSONEncoder().encode(Manifest(files: verified)),
+        guard !failed,
+              let data = try? JSONEncoder().encode(Manifest(files: files.map(\.relative))),
               (try? data.write(to: batch.appendingPathComponent(Self.manifestName), options: .atomic)) != nil else {
             try? fileManager.removeItem(at: batch)
+            report.failed = files.map(\.relative)
             return report
         }
         report.merge(commit(batch))
         return report
     }
 
-    /// Moves a verified staging folder into the library. Same volume, so each move is a rename.
+    /// A new album is renamed as one directory. Existing folders use a persisted
+    /// destination map so a restart can finish the same moves without new names.
     private func commit(_ batch: URL) -> Report {
         var report = Report()
-        guard let data = try? Data(contentsOf: batch.appendingPathComponent(Self.manifestName)),
-              let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else { return report }
-        for relative in manifest.files {
-            let staged = batch.appendingPathComponent(relative)
-            guard fileManager.fileExists(atPath: staged.path) else { continue } // already moved before an interruption
-            if move(staged, to: libraryRoot.appendingPathComponent(relative)) != nil {
-                if Self.kind(of: staged) == .audio { report.audioFiles += 1 } else { report.companionFiles += 1 }
-            } else {
-                report.failed.append(relative)
+        let manifestURL = batch.appendingPathComponent(Self.manifestName)
+        guard let data = try? Data(contentsOf: manifestURL),
+              var manifest = try? JSONDecoder().decode(Manifest.self, from: data),
+              !manifest.files.isEmpty,
+              manifest.files.allSatisfy(isSafeRelativePath) else {
+            report.failed = [batch.lastPathComponent]
+            return report
+        }
+
+        if manifest.version == nil, manifest.destinations == nil, manifest.atomicRoot == nil {
+            // Older manifests did not record where files already moved before a crash.
+            manifest.files.removeAll { !fileManager.fileExists(atPath: batch.appendingPathComponent($0).path) }
+            if manifest.files.isEmpty {
+                try? fileManager.removeItem(at: batch)
+                return report
             }
         }
+
+        if manifest.atomicRoot == nil, manifest.destinations == nil {
+            let root = String(manifest.files[0].split(separator: "/")[0])
+            let isOneFolder = manifest.files.allSatisfy { $0.hasPrefix(root + "/") }
+            if isOneFolder, !fileManager.fileExists(atPath: libraryRoot.appendingPathComponent(root).path) {
+                manifest.atomicRoot = root
+            } else {
+                var reserved: Set<String> = []
+                manifest.destinations = Dictionary(uniqueKeysWithValues: manifest.files.map { relative in
+                    let target = uniqueURL(for: libraryRoot.appendingPathComponent(relative), reserved: reserved)
+                    reserved.insert(target.path)
+                    return (relative, String(target.path.dropFirst(libraryRoot.path.count + 1)))
+                })
+            }
+            guard let updated = try? JSONEncoder().encode(manifest),
+                  (try? updated.write(to: manifestURL, options: .atomic)) != nil else {
+                report.failed = manifest.files
+                return report
+            }
+        }
+
+        if let root = manifest.atomicRoot {
+            guard isSafeRelativePath(root) else {
+                report.failed = manifest.files
+                return report
+            }
+            let stagedRoot = batch.appendingPathComponent(String(manifest.files[0].split(separator: "/")[0]))
+            let targetRoot = libraryRoot.appendingPathComponent(root)
+            if fileManager.fileExists(atPath: stagedRoot.path) {
+                do {
+                    guard !fileManager.fileExists(atPath: targetRoot.path) else { throw CocoaError(.fileWriteFileExists) }
+                    try fileManager.createDirectory(at: targetRoot.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try beforeCommitMove?(stagedRoot, targetRoot)
+                    try fileManager.moveItem(at: stagedRoot, to: targetRoot)
+                } catch {
+                    report.failed = manifest.files
+                    return report
+                }
+            }
+            guard manifest.files.allSatisfy({ relative in
+                let suffix = relative.dropFirst(stagedRoot.lastPathComponent.count + 1)
+                return fileManager.fileExists(atPath: targetRoot.appendingPathComponent(String(suffix)).path)
+            }) else {
+                report.failed = manifest.files
+                return report
+            }
+            for relative in manifest.files {
+                let suffix = relative.dropFirst(stagedRoot.lastPathComponent.count + 1)
+                let destination = root + "/" + suffix
+                contentIndex?.noteAdded(destination)
+                if Self.kind(of: URL(fileURLWithPath: relative)) == .audio { report.audioFiles += 1 }
+                else { report.companionFiles += 1 }
+            }
+        } else if let destinations = manifest.destinations,
+                  manifest.files.allSatisfy({ destinations[$0].map(isSafeRelativePath) == true }) {
+            var succeeded = true
+            for relative in manifest.files {
+                let staged = batch.appendingPathComponent(relative)
+                let target = libraryRoot.appendingPathComponent(destinations[relative]!)
+                if fileManager.fileExists(atPath: staged.path) {
+                    do {
+                        guard !fileManager.fileExists(atPath: target.path) else { throw CocoaError(.fileWriteFileExists) }
+                        try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try beforeCommitMove?(staged, target)
+                        try fileManager.moveItem(at: staged, to: target)
+                    } catch {
+                        succeeded = false
+                        break
+                    }
+                } else if !fileManager.fileExists(atPath: target.path) {
+                    succeeded = false
+                    break
+                }
+            }
+            if !succeeded {
+                for relative in manifest.files.reversed() {
+                    let staged = batch.appendingPathComponent(relative)
+                    let target = libraryRoot.appendingPathComponent(destinations[relative]!)
+                    if !fileManager.fileExists(atPath: staged.path), fileManager.fileExists(atPath: target.path) {
+                        try? fileManager.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? fileManager.moveItem(at: target, to: staged)
+                    }
+                }
+                report.failed = manifest.files
+                return report
+            }
+            for relative in manifest.files {
+                contentIndex?.noteAdded(destinations[relative]!)
+                if Self.kind(of: URL(fileURLWithPath: relative)) == .audio { report.audioFiles += 1 }
+                else { report.companionFiles += 1 }
+            }
+        } else {
+            report.failed = manifest.files
+            return report
+        }
+        try? fileManager.removeItem(at: manifestURL)
         try? fileManager.removeItem(at: batch)
         return report
+    }
+
+    private func isSafeRelativePath(_ path: String) -> Bool {
+        !path.isEmpty && !path.hasPrefix("/") && !path.split(separator: "/", omittingEmptySubsequences: false).contains {
+            $0.isEmpty || $0 == "." || $0 == ".."
+        }
     }
 
     /// Copies through a file coordinator (which downloads iCloud files first), hashing
@@ -306,9 +416,11 @@ struct FileImporter {
         NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: source, options: [], error: &coordinationError) { readable in
             do {
                 try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-                let sourceHash = try streamCopy(from: readable, to: destination)
+                let (sourceHash, copiedBytes) = try streamCopy(from: readable, to: destination)
                 afterStaging?(destination)
-                succeeded = try hash(of: destination) == sourceHash
+                let size = try destination.resourceValues(forKeys: [.fileSizeKey]).fileSize
+                let copiedHash = try hash(of: destination)
+                succeeded = size.map(Int64.init) == copiedBytes && copiedHash == sourceHash
             } catch {
                 succeeded = false
             }
@@ -316,18 +428,20 @@ struct FileImporter {
         return succeeded && coordinationError == nil
     }
 
-    private func streamCopy(from source: URL, to destination: URL) throws -> SHA256.Digest {
+    private func streamCopy(from source: URL, to destination: URL) throws -> (SHA256.Digest, Int64) {
         guard fileManager.createFile(atPath: destination.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
         let input = try FileHandle(forReadingFrom: source)
         let output = try FileHandle(forWritingTo: destination)
         defer { try? input.close(); try? output.close() }
         var hasher = SHA256()
+        var bytes: Int64 = 0
         while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
             hasher.update(data: chunk)
+            bytes += Int64(chunk.count)
             try output.write(contentsOf: chunk)
         }
         try output.synchronize()
-        return hasher.finalize()
+        return (hasher.finalize(), bytes)
     }
 
     private func hash(of url: URL) throws -> SHA256.Digest {
@@ -352,25 +466,6 @@ struct FileImporter {
 
     // MARK: - Moves
 
-    /// Same-volume move: a rename, so the file is never in two half states. The source
-    /// is gone only when the move succeeded.
-    /// Moves a file into place, renaming it when the name is taken. Returns where it went.
-    @discardableResult
-    private func move(_ source: URL, to destination: URL) -> URL? {
-        let target = uniqueURL(for: destination)
-        do {
-            try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try fileManager.moveItem(at: source, to: target)
-        } catch {
-            return nil
-        }
-        // Later files in the same import are compared with this one too.
-        if let index = contentIndex, target.path.hasPrefix(libraryRoot.path + "/") {
-            index.noteAdded(String(target.path.dropFirst(libraryRoot.path.count + 1)))
-        }
-        return target
-    }
-
     // MARK: - Duplicates
 
     private func isInLibrary(_ file: URL) -> Bool {
@@ -385,8 +480,8 @@ struct FileImporter {
         return contentIndex.libraryFiles(sameAs: file).paths.contains { ($0 as NSString).deletingLastPathComponent == folder }
     }
 
-    private func uniqueURL(for url: URL) -> URL {
-        guard fileManager.fileExists(atPath: url.path) else { return url }
+    private func uniqueURL(for url: URL, reserved: Set<String> = []) -> URL {
+        guard fileManager.fileExists(atPath: url.path) || reserved.contains(url.path) else { return url }
         let base = url.deletingPathExtension().lastPathComponent
         let ext = url.pathExtension
         let folder = url.deletingLastPathComponent()
@@ -394,7 +489,7 @@ struct FileImporter {
         while true {
             var candidate = folder.appendingPathComponent("\(base) \(counter)")
             if !ext.isEmpty { candidate = candidate.appendingPathExtension(ext) }
-            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+            if !fileManager.fileExists(atPath: candidate.path), !reserved.contains(candidate.path) { return candidate }
             counter += 1
         }
     }

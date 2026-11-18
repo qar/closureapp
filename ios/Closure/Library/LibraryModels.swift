@@ -32,6 +32,8 @@ struct Track: Identifiable, Hashable, Codable {
     /// Set when an album override applies: the album's key from the tags, kept while
     /// the displayed album title changes. Never stored.
     var originalAlbumKey: String? = nil
+    /// User-chosen album membership. Loaded from the database, never written to audio.
+    var groupingKeyOverride: String? = nil
     /// The user's cover for this track's album, when there is one. Never stored.
     var artworkOverride: URL? = nil
 
@@ -52,7 +54,7 @@ struct Track: Identifiable, Hashable, Codable {
     /// Tracks with the same key form one album. With an album artist tag the key is
     /// "album artist + album", so discs in separate folders and compilations stay
     /// together. Without it, the key is "album folder + album".
-    var albumKey: String { originalAlbumKey ?? tagAlbumKey }
+    var albumKey: String { originalAlbumKey ?? groupingKeyOverride ?? tagAlbumKey }
 
     private var tagAlbumKey: String {
         let albumName = album.trimmingCharacters(in: .whitespaces).lowercased()
@@ -152,17 +154,16 @@ struct ParsedTags: Equatable {
     var isCompilation: Bool?
 }
 
-/// Maps the identifiers of Vorbis comments (FLAC), iTunes atoms (M4A) and ID3 frames
-/// (MP3) to one set of fields. Identifiers were checked against what AVFoundation
-/// reports for files written by ffmpeg.
+/// Maps Vorbis comments, iTunes atoms, ID3 frames, ID3v1 and APEv2 items to one
+/// set of fields. AVFoundation identifiers were checked against ffmpeg-written files.
 enum TagParser {
-    private static let albumArtistIDs: Set<String> = ["vorb/ALBUMARTIST", "vorb/ALBUM ARTIST", "vorb/ALBUM_ARTIST", "itsk/aART", "id3/TPE2"]
-    private static let trackIDs: Set<String> = ["vorb/TRACKNUMBER", "itsk/trkn", "id3/TRCK"]
-    private static let discIDs: Set<String> = ["vorb/DISCNUMBER", "itsk/disk", "id3/TPOS"]
-    private static let yearIDs: Set<String> = ["vorb/DATE", "vorb/YEAR", "vorb/ORIGINALDATE", "itsk/%A9day", "id3/TDRC", "id3/TYER", "id3/TDOR"]
-    private static let composerIDs: Set<String> = ["vorb/COMPOSER", "itsk/%A9wrt", "id3/TCOM"]
-    private static let genreIDs: Set<String> = ["vorb/GENRE", "itsk/%A9gen", "id3/TCON"]
-    private static let compilationIDs: Set<String> = ["vorb/COMPILATION", "itsk/cpil", "id3/TCMP"]
+    private static let albumArtistIDs: Set<String> = ["vorb/ALBUMARTIST", "vorb/ALBUM ARTIST", "vorb/ALBUM_ARTIST", "itsk/aART", "id3/TPE2", "ape/ALBUM ARTIST", "ape/ALBUMARTIST"]
+    private static let trackIDs: Set<String> = ["vorb/TRACKNUMBER", "itsk/trkn", "id3/TRCK", "id3v1/TRACK", "ape/TRACK"]
+    private static let discIDs: Set<String> = ["vorb/DISCNUMBER", "itsk/disk", "id3/TPOS", "ape/DISC"]
+    private static let yearIDs: Set<String> = ["vorb/DATE", "vorb/YEAR", "vorb/ORIGINALDATE", "itsk/%A9day", "id3/TDRC", "id3/TYER", "id3/TDOR", "ape/YEAR", "ape/DATE"]
+    private static let composerIDs: Set<String> = ["vorb/COMPOSER", "itsk/%A9wrt", "id3/TCOM", "ape/COMPOSER"]
+    private static let genreIDs: Set<String> = ["vorb/GENRE", "itsk/%A9gen", "id3/TCON", "id3v1/GENRE", "ape/GENRE"]
+    private static let compilationIDs: Set<String> = ["vorb/COMPILATION", "itsk/cpil", "id3/TCMP", "ape/COMPILATION"]
 
     static func parse(_ items: [TagItem]) -> ParsedTags {
         var tags = ParsedTags()
@@ -293,8 +294,16 @@ enum LibraryGrouping {
         Dictionary(grouping: tracks, by: \.albumKey)
             .map { key, tracks in
                 let sorted = tracks.sorted(by: trackOrder)
-                return Album(id: key, title: sorted.first?.album ?? "Unknown Album",
-                             artist: albumArtist(of: sorted), tracks: sorted)
+                let native = sorted.filter { $0.groupingKeyOverride == nil }
+                let representative = native.first ?? sorted.first
+                let title = representative?.album ?? "Unknown Album"
+                let displayed = sorted.map { track -> Track in
+                    var track = track
+                    if track.groupingKeyOverride != nil { track.album = title }
+                    return track
+                }
+                return Album(id: key, title: title,
+                             artist: albumArtist(of: native.isEmpty ? sorted : native), tracks: displayed)
             }
             .sorted { first, second in
                 let byArtist = first.artist.localizedStandardCompare(second.artist)

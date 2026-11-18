@@ -223,11 +223,98 @@ final class FileImporterTests: XCTestCase {
 
         let report = importer.importItem(source.appendingPathComponent("Album"), mode: .copy)
 
-        XCTAssertEqual(report.audioFiles, 1)
-        XCTAssertEqual(report.failed, ["Album/02.flac"])
-        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertEqual(report.audioFiles, 0)
+        XCTAssertEqual(report.failed, ["Album/01.flac", "Album/02.flac"])
+        XCTAssertFalse(exists("Album/01.flac", in: library))
         XCTAssertFalse(exists("Album/02.flac", in: library))
+        XCTAssertTrue(exists("Album/01.flac", in: source))
         XCTAssertTrue(exists("Album/02.flac", in: source), "the source is never touched")
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testFailedInboxVerificationKeepsTheWholeAlbum() throws {
+        try makeFile("Album/01.flac", in: inbox)
+        try makeFile("Album/02.flac", in: inbox)
+        try makeFile("Album/cover.jpg", in: inbox)
+        var importer = FileImporter(libraryRoot: library)
+        importer.afterStaging = { staged in
+            if staged.lastPathComponent == "02.flac" { try? Data([0]).write(to: staged) }
+        }
+
+        let report = importer.importInbox(inbox)
+
+        XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
+        XCTAssertEqual(Set(report.failed), ["Album/01.flac", "Album/02.flac", "Album/cover.jpg"])
+        for path in ["Album/01.flac", "Album/02.flac", "Album/cover.jpg"] {
+            XCTAssertTrue(exists(path, in: inbox))
+            XCTAssertFalse(exists(path, in: library))
+        }
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testFailedMergeRollsBackAndKeepsInboxSources() throws {
+        try makeFile("Album/existing.flac", in: library, bytes: 12)
+        try makeFile("Album/01.flac", in: inbox)
+        try makeFile("Album/02.flac", in: inbox)
+        var importer = FileImporter(libraryRoot: library)
+        importer.beforeCommitMove = { _, destination in
+            if destination.lastPathComponent == "02.flac" { throw CocoaError(.fileWriteUnknown) }
+        }
+
+        let report = importer.importInbox(inbox)
+
+        XCTAssertEqual(report.audioFiles, 0)
+        XCTAssertEqual(report.failed, ["Album/01.flac", "Album/02.flac"])
+        XCTAssertTrue(exists("Album/existing.flac", in: library))
+        XCTAssertFalse(exists("Album/01.flac", in: library))
+        XCTAssertFalse(exists("Album/02.flac", in: library))
+        XCTAssertTrue(exists("Album/01.flac", in: inbox))
+        XCTAssertTrue(exists("Album/02.flac", in: inbox))
+
+        let recovered = FileImporter(libraryRoot: library).recoverStaging()
+        XCTAssertEqual(recovered.audioFiles, 2)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testPartiallyCommittedMergeFinishesAtRecordedDestinations() throws {
+        try makeFile("Album/01.flac", in: library, bytes: 10)
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch, bytes: 20)
+        try makeFile("Album/02.flac", in: batch)
+        try JSONSerialization.data(withJSONObject: [
+            "files": ["Album/01.flac", "Album/02.flac"],
+            "destinations": ["Album/01.flac": "Album/01 2.flac", "Album/02.flac": "Album/02.flac"]
+        ]).write(to: batch.appendingPathComponent("manifest.json"))
+        try fileManager.moveItem(at: batch.appendingPathComponent("Album/01.flac"),
+                                 to: library.appendingPathComponent("Album/01 2.flac"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 2)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/01 2.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testAtomicAlbumMoveFinishesAfterRestart() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+        try makeFile("Album/cover.jpg", in: batch)
+        try JSONSerialization.data(withJSONObject: [
+            "files": ["Album/01.flac", "Album/cover.jpg"], "atomicRoot": "Album"
+        ]).write(to: batch.appendingPathComponent("manifest.json"))
+        try fileManager.moveItem(at: batch.appendingPathComponent("Album"),
+                                 to: library.appendingPathComponent("Album"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.companionFiles, 1)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/cover.jpg", in: library))
         XCTAssertTrue(stagingIsEmpty())
     }
 
@@ -255,6 +342,24 @@ final class FileImporterTests: XCTestCase {
         XCTAssertEqual(report.audioFiles, 1)
         XCTAssertEqual(report.companionFiles, 1)
         XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testLegacyManifestFinishesAfterOneFileWasMoved() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+        try makeFile("Album/02.flac", in: batch)
+        try JSONSerialization.data(withJSONObject: ["files": ["Album/01.flac", "Album/02.flac"]])
+            .write(to: batch.appendingPathComponent("manifest.json"))
+        try fileManager.createDirectory(at: library.appendingPathComponent("Album"), withIntermediateDirectories: true)
+        try fileManager.moveItem(at: batch.appendingPathComponent("Album/01.flac"),
+                                 to: library.appendingPathComponent("Album/01.flac"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: library))
         XCTAssertTrue(stagingIsEmpty())
     }
 
