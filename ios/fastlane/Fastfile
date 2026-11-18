@@ -85,6 +85,18 @@ platform :ios do
     end
   end
 
+  # Builds the Release archive into build/Papermoon.xcarchive (generic iOS device).
+  # Signing uses the API key, so no Apple ID has to be added to Xcode.
+  desc "Archive the app into build/Papermoon.xcarchive"
+  lane :archive do
+    require_api_key!
+    FileUtils.rm_rf(File.expand_path("../build/Papermoon.xcarchive"))
+    sh("xcodebuild -project '#{File.expand_path('../Closure.xcodeproj')}' -scheme Closure -configuration Release " \
+       "-destination 'generic/platform=iOS' archive -archivePath '#{File.expand_path('../build/Papermoon.xcarchive')}' " \
+       "#{xcodebuild_auth_args} | grep -E '^(\\*\\*|error:|warning:.*deprecat|.*error)' || true")
+    UI.user_error!("Archive failed") unless File.directory?(File.expand_path("../build/Papermoon.xcarchive/Products"))
+  end
+
   # Signs build/Papermoon.xcarchive for the App Store and uploads it (ExportOptions
   # has destination "upload"). Signing and upload use the API key; no Apple ID has
   # to be added to Xcode. Takes a few minutes; the build then shows up in TestFlight
