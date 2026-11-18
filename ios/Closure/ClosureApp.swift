@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 struct ClosureApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var library: LibraryStore
-    @State private var player = PlayerModel()
+    @State private var player: PlayerModel
     @State private var driveAccount: GoogleDriveAccount
     @State private var downloads: DriveDownloadManager
     @Environment(\.scenePhase) private var scenePhase
@@ -24,6 +24,7 @@ struct ClosureApp: App {
         // Created here, not lazily, so a background relaunch for download events finds
         // the session and the saved job.
         let library = LibraryStore()
+        let player = PlayerModel()
         let account = GoogleDriveAccount()
         let downloads = DriveDownloadManager(root: DriveDownloadManager.appRoot,
                                              configuration: DriveDownloadManager.appConfiguration()) {
@@ -39,8 +40,10 @@ struct ClosureApp: App {
         DriveDownloadManager.loadDemoIfRequested(downloads)
 #endif
         _library = State(initialValue: library)
+        _player = State(initialValue: player)
         _driveAccount = State(initialValue: account)
         _downloads = State(initialValue: downloads)
+        CarPlayController.shared.bind(library: library, player: player)
     }
 
     var body: some Scene {
@@ -67,7 +70,12 @@ struct ClosureApp: App {
                 }
                 .onChange(of: library.albums) { _, albums in
                     player.refreshTracks(from: albums)
+                    CarPlayController.shared.refresh()
                 }
+                .onChange(of: library.playlists) { _, _ in CarPlayController.shared.refresh() }
+                .onChange(of: player.queue) { _, _ in CarPlayController.shared.refresh() }
+                .onChange(of: player.currentIndex) { _, _ in CarPlayController.shared.refresh() }
+                .onChange(of: player.isPlaying) { _, _ in CarPlayController.shared.refresh() }
                 .onChange(of: library.isLoaded, initial: true) { _, loaded in
                     // Put back what was playing last time, paused.
                     // Debug screens start their own playback.
