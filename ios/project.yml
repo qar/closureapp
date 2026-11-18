@@ -73,6 +73,7 @@ targets:
       - path: Closure/Library/StorageSummary.swift
       - path: Closure/Library/FileProblems.swift
       - path: Closure/Library/AlbumOverride.swift
+      - path: Closure/Library/TrackOverride.swift
       - path: Closure/Library/MusicBrainz.swift
       - path: Closure/Library/Lyrics.swift
       - path: Closure/Library/Playlist.swift

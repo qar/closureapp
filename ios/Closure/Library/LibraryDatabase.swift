@@ -7,7 +7,7 @@ import SQLite3
 /// table is the source of truth for metadata; the files keep the layout they were
 /// imported with. Not thread safe: one owner (LibraryCatalog) uses it at a time.
 final class LibraryDatabase {
-    static let schemaVersion = 3
+    static let schemaVersion = 4
 
     enum DatabaseError: Error, CustomStringConvertible {
         case sqlite(String)
@@ -150,6 +150,17 @@ final class LibraryDatabase {
                 PRAGMA user_version = 3;
                 """)
         }
+        if version < 4 {
+            try execute("""
+                CREATE TABLE IF NOT EXISTS track_overrides (
+                    track_id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT, artist TEXT, album TEXT, album_artist TEXT,
+                    track_number INTEGER, disc_number INTEGER, year INTEGER,
+                    composer TEXT, genre TEXT, group_key TEXT
+                ) WITHOUT ROWID;
+                PRAGMA user_version = 4;
+                """)
+        }
     }
 
     // MARK: - Playlists
@@ -235,6 +246,59 @@ final class LibraryDatabase {
         bind(statement, 4, override.year)
         bind(statement, 5, override.artworkFile)
         guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
+    }
+
+    // MARK: - Track overrides
+
+    func allTrackOverrides() throws -> [String: TrackOverride] {
+        var overrides: [String: TrackOverride] = [:]
+        try query("SELECT track_id, title, artist, album, album_artist, track_number, disc_number, year, composer, genre, group_key FROM track_overrides") { row in
+            let id = Self.text(row, 0) ?? ""
+            overrides[id] = TrackOverride(trackID: id, title: Self.text(row, 1), artist: Self.text(row, 2),
+                                          album: Self.text(row, 3), albumArtist: Self.text(row, 4),
+                                          trackNumber: Self.int(row, 5), discNumber: Self.int(row, 6),
+                                          year: Self.int(row, 7), composer: Self.text(row, 8),
+                                          genre: Self.text(row, 9), groupKey: Self.text(row, 10))
+        }
+        return overrides
+    }
+
+    func saveTrackOverrides(_ overrides: [TrackOverride]) throws {
+        guard !overrides.isEmpty else { return }
+        try transaction { try writeTrackOverrides(overrides) }
+    }
+
+    func saveAlbumAssignment(_ changes: [TrackOverride], albumOverride: AlbumOverride?) throws {
+        try transaction {
+            if let albumOverride { try setOverride(albumOverride) }
+            try writeTrackOverrides(changes)
+        }
+    }
+
+    private func writeTrackOverrides(_ overrides: [TrackOverride]) throws {
+        let insert = try prepare("INSERT OR REPLACE INTO track_overrides (track_id, title, artist, album, album_artist, track_number, disc_number, year, composer, genre, group_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        defer { sqlite3_finalize(insert) }
+        let delete = try prepare("DELETE FROM track_overrides WHERE track_id = ?")
+        defer { sqlite3_finalize(delete) }
+        for override in overrides {
+            let statement = override.isEmpty ? delete : insert
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+            bind(statement, 1, override.trackID)
+            if !override.isEmpty {
+                bind(statement, 2, override.title)
+                bind(statement, 3, override.artist)
+                bind(statement, 4, override.album)
+                bind(statement, 5, override.albumArtist)
+                bind(statement, 6, override.trackNumber)
+                bind(statement, 7, override.discNumber)
+                bind(statement, 8, override.year)
+                bind(statement, 9, override.composer)
+                bind(statement, 10, override.genre)
+                bind(statement, 11, override.groupKey)
+            }
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw error() }
+        }
     }
 
     // MARK: - SQLite helpers

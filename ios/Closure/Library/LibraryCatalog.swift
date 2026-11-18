@@ -60,6 +60,7 @@ actor LibraryCatalog {
     private(set) var lastNewlyUnreadable: [Track] = []
     /// The user's album edits, applied after grouping.
     private(set) var overrides: [String: AlbumOverride] = [:]
+    private var trackOverrides: [String: TrackOverride] = [:]
     private static let readers = 4
     private static let publishInterval: TimeInterval = 1.0
 
@@ -74,6 +75,7 @@ actor LibraryCatalog {
         let rows = (try? database?.allTracks()) ?? []
         tracks = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         overrides = (try? database?.allOverrides()) ?? [:]
+        trackOverrides = (try? database?.allTrackOverrides()) ?? [:]
         return grouped()
     }
 
@@ -134,7 +136,8 @@ actor LibraryCatalog {
     }
 
     private func grouped() -> [Album] {
-        AlbumOverrides.apply(overrides, to: LibraryGrouping.albums(from: Array(tracks.values)))
+        let edited = tracks.values.map { trackOverrides[$0.id]?.apply(to: $0) ?? $0 }
+        return AlbumOverrides.apply(overrides, to: LibraryGrouping.albums(from: edited))
     }
 
     // MARK: - Playlists
@@ -160,6 +163,53 @@ actor LibraryCatalog {
     func setOverride(_ override: AlbumOverride) -> [Album] {
         try? database?.setOverride(override)
         overrides[override.albumKey] = override.isEmpty ? nil : override
+        return grouped()
+    }
+
+    func trackOverride(for id: String) -> TrackOverride {
+        trackOverrides[id] ?? TrackOverride(trackID: id)
+    }
+
+    func saveTrackOverride(_ override: TrackOverride) throws -> [Album] {
+        guard let database else { throw LibraryDatabase.DatabaseError.sqlite("Library database unavailable") }
+        guard tracks[override.trackID] != nil else { return grouped() }
+        try database.saveTrackOverrides([override])
+        trackOverrides[override.trackID] = override.isEmpty ? nil : override
+        return grouped()
+    }
+
+    func moveTracks(_ ids: [String], to existingAlbumID: String?, newAlbum: (title: String, artist: String)?) throws -> [Album] {
+        guard let database else { throw LibraryDatabase.DatabaseError.sqlite("Library database unavailable") }
+        let selected = Set(ids).filter { tracks[$0] != nil }
+        guard !selected.isEmpty else { return grouped() }
+        let target = existingAlbumID.flatMap { id in grouped().first { $0.id == id } }
+        guard target != nil || newAlbum != nil else {
+            throw LibraryDatabase.DatabaseError.sqlite("Target album no longer exists")
+        }
+        let key = target?.id ?? "custom:\(UUID().uuidString)"
+        let changes = selected.sorted().map { id -> TrackOverride in
+            var edit = trackOverride(for: id)
+            edit.groupKey = key
+            return edit
+        }
+        let newOverride = newAlbum.map {
+            AlbumOverride(albumKey: key, title: $0.title, artist: $0.artist, year: nil, artworkFile: nil)
+        }
+        try database.saveAlbumAssignment(changes, albumOverride: newOverride)
+        if let newOverride { overrides[key] = newOverride }
+        for change in changes { trackOverrides[change.trackID] = change }
+        return grouped()
+    }
+
+    func restoreFileAlbum(for ids: [String]) throws -> [Album] {
+        guard let database else { throw LibraryDatabase.DatabaseError.sqlite("Library database unavailable") }
+        let changes = Set(ids).filter { tracks[$0] != nil }.sorted().map { id -> TrackOverride in
+            var edit = trackOverride(for: id)
+            edit.groupKey = nil
+            return edit
+        }
+        try database.saveTrackOverrides(changes)
+        for change in changes { trackOverrides[change.trackID] = change.isEmpty ? nil : change }
         return grouped()
     }
 
