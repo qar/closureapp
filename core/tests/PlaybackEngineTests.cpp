@@ -5,6 +5,7 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -233,6 +234,18 @@ struct EventLog
             if (event.type == EngineEvent::Type::trackChanged)
                 indices.push_back(event.trackIndex);
         return indices;
+    }
+
+    bool waitForTrackChanges(std::size_t count)
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        return changed.wait_for(lock, std::chrono::seconds(5), [this, count]
+        {
+            return std::count_if(events.begin(), events.end(), [](const EngineEvent& event)
+            {
+                return event.type == EngineEvent::Type::trackChanged;
+            }) >= static_cast<std::ptrdiff_t>(count);
+        });
     }
 };
 
@@ -467,6 +480,7 @@ void testReplaceQueueKeepsTheCurrentTrackPlaying()
         check(segmentEquals(rest, 0, firstLength - 1000, 0.1f, -0.1f), "no break in the current track" + label);
         check(segmentEquals(rest, firstLength - 1000, 5000, 0.2f, -0.2f), "b follows in the new order" + label);
         // Renumbering the track being heard is not a track change.
+        check(log.waitForTrackChanges(2), "track changes arrive" + label);
         const auto changes = log.trackChanges();
         std::string seen;
         for (const auto index : changes)
