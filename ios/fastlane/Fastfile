@@ -43,6 +43,10 @@ platform :ios do
       app_version: "0.0.1",
       skip_binary_upload: true,
       skip_screenshots: true,
+      # Apple's new age-rating questionnaire makes fastlane fail with "No data" on a
+      # first version; the rating and categories are set on the website instead.
+      skip_app_version_update: false,
+      ignore_language_directory_validation: true,
       force: true,
       submit_for_review: false,
       run_precheck_before_submit: false
