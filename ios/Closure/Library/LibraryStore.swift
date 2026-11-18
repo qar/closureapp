@@ -4,12 +4,12 @@ import ImageIO
 import UIKit
 import Observation
 
-/// Prototype library. The app keeps its own copy of every file, in the folder
+/// The app keeps its own copy of every file, in the folder
 /// structure it was imported with (see FileImporter):
 /// - Files and folders picked in the Files app are copied in. The source is never changed.
 /// - Files dropped into the app's Documents folder in Finder are moved in when the app
 ///   becomes active. Only files that arrived in the library leave Documents.
-/// Real library management (database, editing, sync) comes after the prototype.
+/// Library edits live in SQLite; only explicit file operations change files.
 @MainActor
 @Observable
 final class LibraryStore {
@@ -412,6 +412,26 @@ final class LibraryStore {
     /// Clears every edit of the album, including a chosen cover.
     func restoreOriginal(_ albumID: String) async {
         await saveAlbumEdit(albumID, title: nil, artist: nil, year: nil, cover: nil, removeCover: true)
+    }
+
+    func trackOverride(for id: String) async -> TrackOverride {
+        await catalog.trackOverride(for: id)
+    }
+
+    func saveTrackEdit(_ edit: TrackOverride) async throws {
+        albums = try await catalog.saveTrackOverride(edit)
+    }
+
+    func moveTracks(_ tracks: [Track], to albumID: String) async throws {
+        albums = try await catalog.moveTracks(tracks.map(\.id), to: albumID, newAlbum: nil)
+    }
+
+    func moveTracks(_ tracks: [Track], toNewAlbum title: String, artist: String) async throws {
+        albums = try await catalog.moveTracks(tracks.map(\.id), to: nil, newAlbum: (title, artist))
+    }
+
+    func restoreFileAlbum(for tracks: [Track]) async throws {
+        albums = try await catalog.restoreFileAlbum(for: tracks.map(\.id))
     }
 
     /// Stores a picked image as a square JPEG (the middle of it) of at most 1500 px.

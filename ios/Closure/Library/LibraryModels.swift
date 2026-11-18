@@ -32,6 +32,8 @@ struct Track: Identifiable, Hashable, Codable {
     /// Set when an album override applies: the album's key from the tags, kept while
     /// the displayed album title changes. Never stored.
     var originalAlbumKey: String? = nil
+    /// User-chosen album membership. Loaded from the database, never written to audio.
+    var groupingKeyOverride: String? = nil
     /// The user's cover for this track's album, when there is one. Never stored.
     var artworkOverride: URL? = nil
 
@@ -52,7 +54,7 @@ struct Track: Identifiable, Hashable, Codable {
     /// Tracks with the same key form one album. With an album artist tag the key is
     /// "album artist + album", so discs in separate folders and compilations stay
     /// together. Without it, the key is "album folder + album".
-    var albumKey: String { originalAlbumKey ?? tagAlbumKey }
+    var albumKey: String { originalAlbumKey ?? groupingKeyOverride ?? tagAlbumKey }
 
     private var tagAlbumKey: String {
         let albumName = album.trimmingCharacters(in: .whitespaces).lowercased()
@@ -292,8 +294,16 @@ enum LibraryGrouping {
         Dictionary(grouping: tracks, by: \.albumKey)
             .map { key, tracks in
                 let sorted = tracks.sorted(by: trackOrder)
-                return Album(id: key, title: sorted.first?.album ?? "Unknown Album",
-                             artist: albumArtist(of: sorted), tracks: sorted)
+                let native = sorted.filter { $0.groupingKeyOverride == nil }
+                let representative = native.first ?? sorted.first
+                let title = representative?.album ?? "Unknown Album"
+                let displayed = sorted.map { track -> Track in
+                    var track = track
+                    if track.groupingKeyOverride != nil { track.album = title }
+                    return track
+                }
+                return Album(id: key, title: title,
+                             artist: albumArtist(of: native.isEmpty ? sorted : native), tracks: displayed)
             }
             .sorted { first, second in
                 let byArtist = first.artist.localizedStandardCompare(second.artist)

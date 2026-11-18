@@ -8,6 +8,9 @@ struct AlbumView: View {
     @State private var confirmingAlbumDelete = false
     @Environment(\.dismiss) private var dismiss
     @State private var editing = false
+    @State private var editingTrack: Track?
+    @State private var movingTracks: [Track] = []
+    @State private var choosingDestination = false
     @State private var findingInfo = false
 
     private var album: Album? { library.albums.first { $0.id == albumID } }
@@ -19,6 +22,10 @@ struct AlbumView: View {
                     if album != nil {
                         MoreMenu {
                             Button("Edit Album…", systemImage: "pencil") { editing = true }
+                            Button("Merge Album…", systemImage: "square.on.square") {
+                                movingTracks = album?.tracks ?? []
+                                choosingDestination = true
+                            }
                             Button("Find Info Online…", systemImage: "magnifyingglass") { findingInfo = true }
                             Divider()
                             Button("Delete Album…", systemImage: "trash", role: .destructive) { confirmingAlbumDelete = true }
@@ -69,6 +76,16 @@ struct AlbumView: View {
                     .presentationBackground(Theme.paper)
                     .presentationDragIndicator(.visible)
             }
+        }
+        .sheet(item: $editingTrack) { track in
+            TrackEditView(track: track)
+                .presentationBackground(Theme.paper)
+        }
+        .sheet(isPresented: $choosingDestination) {
+            AlbumDestinationView(tracks: movingTracks, currentAlbumID: albumID) {
+                if !library.albums.contains(where: { $0.id == albumID }) { dismiss() }
+            }
+            .presentationBackground(Theme.paper)
         }
         .confirmationDialog("Delete this album?", isPresented: $confirmingAlbumDelete, titleVisibility: .visible) {
             if let album {
@@ -176,6 +193,12 @@ struct AlbumView: View {
                 .buttonStyle(.plain)
                 .contextMenu {
                     TrackMenuItems(tracks: [track], context: album.title)
+                    Divider()
+                    Button("Edit Track…", systemImage: "pencil") { editingTrack = track }
+                    Button("Move to Album…", systemImage: "square.on.square") {
+                        movingTracks = [track]
+                        choosingDestination = true
+                    }
                     Divider()
                     Button("Delete…", systemImage: "trash", role: .destructive) { pendingDelete = track }
                 }

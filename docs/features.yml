@@ -233,12 +233,15 @@ features:
     title: 文件保持导入时的结构，整理全部在软件层面完成
     category: library
     priority: P0
-    platforms: { ios: partial, macos: done }
+    platforms: { ios: done, macos: done }
     acceptance:
       - 导入后，文件夹名、文件名、目录结构与来源相同。
       - 编辑标签、合并或拆分专辑、歌单和收藏只改数据库，不改文件。
       - 文件只在用户明确操作时才变化（删除、在文件夹视图中移动或重命名）。
-    notes: iOS 已保持结构。标签编辑尚未实现，见 library.metadata-edit。
+    notes: >-
+      2026-11-18：导入保持原目录层级；专辑和曲目标签编辑、专辑合并及拆分、歌单和收藏
+      均只写 SQLite，不改音频文件。测试覆盖数据库重载后的分组及文件内容不变。
+      来源路径发生同名冲突时，导入器会给新文件名加序号以避免覆盖原文件。
 
   - id: library.companion-files
     title: 封面、歌词、CUE 等附属文件随音频一起导入
@@ -492,7 +495,9 @@ features:
     category: library
     priority: P2
     platforms: { ios: partial, macos: partial }
-    notes: iOS 专辑级编辑完成（2026-11-16）：专辑页“…”→ Edit Album 可改标题、艺人、年份、封面。修改存进数据库 album_overrides 表（schema 2），按专辑原始分组键识别，不改文件和标签；“Restore Original”恢复标签值。尚未做：单曲标题等曲目级编辑。
+    notes: >-
+      iOS 专辑级编辑可改标题、艺人、年份和封面；曲目级编辑可改标题、艺人、专辑、专辑艺人、
+      曲号、碟号、年份、作曲者和流派。修改只写数据库，不改文件标签。尚未覆盖所有格式专有字段。
 
   - id: library.musicbrainz
     title: 由用户触发的 MusicBrainz 元数据匹配
