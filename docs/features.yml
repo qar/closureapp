@@ -452,11 +452,11 @@ features:
     title: 全库搜索，支持中文和拼音首字母
     category: library
     priority: P1
-    platforms: { ios: partial, macos: planned }
+    platforms: { ios: done, macos: planned }
     why: [reviews-2026-11（不能用中文搜索）]
     acceptance:
       - 可以按标题、艺人、专辑、作曲家搜索。输入"zjl"能找到"周杰伦"。
-    notes: iOS 可以按标题、艺人搜索，忽略大小写和变音符号。还不支持拼音首字母和作曲家。
+    notes: iOS 可按曲名、艺人、专辑名和作曲家搜索，支持中文、拼音全拼和首字母（如 zjl 找到周杰伦），忽略大小写和变音符号。搜索索引在后台构建；输入停顿后在后台查询。2026-11-18 有单元测试覆盖。
 
   - id: library.artwork
     title: 封面优先用内嵌图片，绝不错配，可手动替换

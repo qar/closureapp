@@ -14,8 +14,12 @@ import Observation
 @Observable
 final class LibraryStore {
     private(set) var albums: [Album] = [] {
-        didSet { tracksByID = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }) }
+        didSet {
+            tracksByID = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            searchRevision &+= 1
+        }
     }
+    private(set) var searchRevision = 0
     /// Every track by its path, for playlists.
     @ObservationIgnored private(set) var tracksByID: [String: Track] = [:]
     /// Favorites first, then the user's playlists in the order they were made.

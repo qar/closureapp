@@ -30,6 +30,7 @@
 		3C92A46C23BE4163AF62B459 /* GoogleDrive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EAF3D7E74544716258FA184 /* GoogleDrive.swift */; };
 		3EA69EFE2B72054802111C1A /* ClosureMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DDABCF95FA08059DC6E48A63 /* ClosureMono-Regular.ttf */; };
 		44CD22DD97705BEE7B000CF4 /* MusicBrainz.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F15A273E5DEF3F06BBC71C0 /* MusicBrainz.swift */; };
+		44E4410F119A5992B7CAAB40 /* LibrarySearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CB5FC0F3A63529FC00068 /* LibrarySearchIndex.swift */; };
 		4590DF50A63DE682B321FCBA /* LibraryInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C730F54FBA88AD4A1F774E /* LibraryInfoView.swift */; };
 		49959144818F08A403B8E96A /* QueueEditingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A11A926D1D50D8F8D6A3824 /* QueueEditingTests.swift */; };
 		4A5E3E75FBDF15DE95EDDE48 /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C142CC4ECE369F74537D9B6C /* AlbumView.swift */; };
@@ -38,6 +39,7 @@
 		56A4FE1B0F52D57096D7DA44 /* AlbumTitleParts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 954749E482895C896F36D5B2 /* AlbumTitleParts.swift */; };
 		573ABC9EADE67E03D98C84F2 /* FileImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8772C6C480B7DE6849E0F33 /* FileImporterTests.swift */; };
 		5C72E4261662AB417DDC2119 /* AlbumOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B128923EBA03CA890900CC /* AlbumOverride.swift */; };
+		63CE3BE9E55D1D8EF87AF353 /* LibrarySearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AAA9A313C8EA1A99C0F0C9 /* LibrarySearchIndexTests.swift */; };
 		664086D19EDC7434DE191D5A /* LibraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5B3B300C98D2F04368EA8E /* LibraryModels.swift */; };
 		66EE81450FE6611DCD34B24F /* ClosureMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 915342216B8BBC0758393F1B /* ClosureMono-Medium.ttf */; };
 		6739D3CC4DDF476627439EC5 /* AlbumEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55D0177635A19B97548CD4A5 /* AlbumEditView.swift */; };
@@ -79,6 +81,7 @@
 		C61562FAC5E91965DD5C799B /* LibraryScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = C201361B3A4010595107559F /* LibraryScreens.swift */; };
 		C7A1AFB9705E7CA79F8E9970 /* ClosureApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82DE8743762F3E2C3E5F7445 /* ClosureApp.swift */; };
 		C83942C50A20B6E515BCAE55 /* DownloadJobTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77250D1D1B60010A2E27B0A8 /* DownloadJobTests.swift */; };
+		C941E3D2B21BC23B02ABEE35 /* LibrarySearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53CB5FC0F3A63529FC00068 /* LibrarySearchIndex.swift */; };
 		CB203BCF69D033E54B16E360 /* FoldersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B25BA427718518C4871455 /* FoldersView.swift */; };
 		D3A41B56734B17F172682836 /* Playlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886C1DC06E830235CE56CDD7 /* Playlist.swift */; };
 		D53D0F4E457E8FC0F67BDDA5 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59FA3F362CA0004A30C1C22 /* LyricsView.swift */; };
@@ -119,6 +122,7 @@
 		3D1E344821A6D0CBE93C7840 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3F92E8ED9B2993A455BB3CED /* PlaybackEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PlaybackEngine.h; sourceTree = "<group>"; };
 		47EB5DDC09B0F8783BA014B3 /* DriveDownloadManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveDownloadManagerTests.swift; sourceTree = "<group>"; };
+		48AAA9A313C8EA1A99C0F0C9 /* LibrarySearchIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchIndexTests.swift; sourceTree = "<group>"; };
 		4FF168FEED461F549402E853 /* LyricsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsTests.swift; sourceTree = "<group>"; };
 		52F9B7E79719FCF0CD79DC65 /* GoogleOAuth.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = GoogleOAuth.xcconfig; sourceTree = "<group>"; };
 		54ACB32A8EBD810FB1A1903A /* AudioOutput.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AudioOutput.h; sourceTree = "<group>"; };
@@ -168,6 +172,7 @@
 		DDABCF95FA08059DC6E48A63 /* ClosureMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "ClosureMono-Regular.ttf"; sourceTree = "<group>"; };
 		E141F6BEB2104B9CB805ED01 /* DriveBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveBrowserView.swift; sourceTree = "<group>"; };
 		E4E4400F4976C29908FBF37E /* LibraryDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDatabaseTests.swift; sourceTree = "<group>"; };
+		E53CB5FC0F3A63529FC00068 /* LibrarySearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchIndex.swift; sourceTree = "<group>"; };
 		EAD22F37336FC0E0AE65D929 /* NowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
 		EE1DC848EE6F5F62A93781B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F6E52B6FA8C45804125E9DE0 /* LibraryDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryDatabase.swift; sourceTree = "<group>"; };
@@ -241,6 +246,7 @@
 				26FB9D34F80332C29B1AAF5B /* GoogleDriveTests.swift */,
 				E4E4400F4976C29908FBF37E /* LibraryDatabaseTests.swift */,
 				3CA108D7488A1264499594EA /* LibraryLogicTests.swift */,
+				48AAA9A313C8EA1A99C0F0C9 /* LibrarySearchIndexTests.swift */,
 				4FF168FEED461F549402E853 /* LyricsTests.swift */,
 				88BA8B48DD24BF1A8FB1F074 /* MusicBrainzTests.swift */,
 				B11D68482A3BD77D90E0439E /* PlaybackStateTests.swift */,
@@ -322,6 +328,7 @@
 				FB01DF79C8590474E4AF68C4 /* LibraryCatalog.swift */,
 				F6E52B6FA8C45804125E9DE0 /* LibraryDatabase.swift */,
 				AA5B3B300C98D2F04368EA8E /* LibraryModels.swift */,
+				E53CB5FC0F3A63529FC00068 /* LibrarySearchIndex.swift */,
 				7646CEBEEB96A9FD93E12DCE /* LibraryStore.swift */,
 				DD3DCDE3BF80277706035D95 /* Lyrics.swift */,
 				0F15A273E5DEF3F06BBC71C0 /* MusicBrainz.swift */,
@@ -523,6 +530,7 @@
 				4590DF50A63DE682B321FCBA /* LibraryInfoView.swift in Sources */,
 				664086D19EDC7434DE191D5A /* LibraryModels.swift in Sources */,
 				C61562FAC5E91965DD5C799B /* LibraryScreens.swift in Sources */,
+				44E4410F119A5992B7CAAB40 /* LibrarySearchIndex.swift in Sources */,
 				94295DFA171D9FF754F96315 /* LibraryStore.swift in Sources */,
 				BA66A2889C3178E07E3C1A3F /* LibraryView.swift in Sources */,
 				BC7408555B0C5B6BAE745DDA /* Lyrics.swift in Sources */,
@@ -565,6 +573,8 @@
 				ADD97AC5A3F42DBF6140B3CF /* LibraryDatabaseTests.swift in Sources */,
 				A87D15FDDB89439DAB7D7EE1 /* LibraryLogicTests.swift in Sources */,
 				B121AE683F0DA04F6C102E22 /* LibraryModels.swift in Sources */,
+				C941E3D2B21BC23B02ABEE35 /* LibrarySearchIndex.swift in Sources */,
+				63CE3BE9E55D1D8EF87AF353 /* LibrarySearchIndexTests.swift in Sources */,
 				36B398C9C2987E936997C098 /* Lyrics.swift in Sources */,
 				7DFC0F914F945BFBFAE32B7B /* LyricsTests.swift in Sources */,
 				69E6D2C41B1E2025811A4B03 /* MusicBrainz.swift in Sources */,
