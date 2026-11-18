@@ -644,12 +644,16 @@ features:
     title: 一次性买断
     category: commerce
     priority: P0
-    platforms: { ios: planned, macos: n/a }
+    platforms: { ios: partial, macos: n/a }
     why: [reviews-2026-11（收费 37 条，近三年最多）]
     acceptance:
       - 购买、恢复购买、家人共享、退款后状态都经过测试。
       - 购买后不出现任何广告或捐款请求。
-    notes: macOS 版目前免费，通过 Sparkle 在 App Store 之外分发。
+    notes: >-
+      iOS 采用 App Store 付费下载，无 App 内购买、广告和捐款入口。
+      2026-11-18 已按用户选择将美国区基准价格设为 US$4.99，并从 App Store Connect 读回确认。
+      购买、重新下载、家庭共享和退款后的实际状态需待 App Store 可购买时测试。
+      macOS 版目前免费，通过 Sparkle 在 App Store 之外分发。
 
   # ---------------------------------------------------------------- 体验与无障碍
 
