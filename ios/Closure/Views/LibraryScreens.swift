@@ -204,13 +204,17 @@ struct SearchView: View {
     @Environment(PlayerModel.self) private var player
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var index: LibrarySearchIndex?
+    @State private var indexGeneration = 0
+    @State private var results = LibrarySearchIndex.Results()
+    @State private var searchedQuery = ""
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
-                TextField("Albums, artists, tracks", text: $query)
+                TextField("Search your library", text: $query)
                     .font(.system(size: 16))
                     .foregroundStyle(Theme.ink)
                     .focused($focused)
@@ -265,7 +269,10 @@ struct SearchView: View {
                             Hairline()
                         }
                     }
-                    if !query.isEmpty && albums.isEmpty && tracks.isEmpty {
+                    if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       index == nil {
+                        ProgressView().tint(Theme.ink).padding(.top, 32)
+                    } else if searchedQuery == query && !searchedQuery.isEmpty && albums.isEmpty && tracks.isEmpty {
                         Text("No results for \u{201C}\(query)\u{201D}")
                             .font(.system(size: 16))
                             .foregroundStyle(Theme.muted)
@@ -281,26 +288,52 @@ struct SearchView: View {
         .presentationBackground(Theme.paper)
         .presentationDragIndicator(.visible)
         .onAppear { focused = true }
-    }
-
-    private func matches(_ text: String) -> Bool {
-        text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) != nil
+        .task(id: library.searchRevision) {
+            index = nil
+            results = .init()
+            searchedQuery = ""
+            let documents = library.albums.map { album in
+                LibrarySearchIndex.AlbumDocument(
+                    id: album.id, title: album.title, artist: album.artist,
+                    tracks: album.tracks.map { track in
+                        LibrarySearchIndex.TrackDocument(id: track.id, title: track.title,
+                                                         artist: track.artist, composer: track.composer)
+                    })
+            }
+            let built = await Task.detached(priority: .userInitiated) {
+                LibrarySearchIndex(documents: documents)
+            }.value
+            guard !Task.isCancelled else { return }
+            index = built
+            indexGeneration &+= 1
+        }
+        .task(id: "\(library.searchRevision):\(indexGeneration):\(query)") {
+            results = .init()
+            searchedQuery = ""
+            guard let index, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            guard !Task.isCancelled else { return }
+            let query = query
+            let found = await Task.detached(priority: .userInitiated) { index.search(query) }.value
+            guard !Task.isCancelled else { return }
+            results = found
+            searchedQuery = query
+        }
     }
 
     private var matchingAlbums: [Album] {
-        guard !query.isEmpty else { return [] }
-        return Array(library.albums.filter { matches($0.title) || matches($0.artist) }.prefix(20))
+        results.albums.compactMap { hit in
+            guard library.albums.indices.contains(hit.index), library.albums[hit.index].id == hit.id else { return nil }
+            return library.albums[hit.index]
+        }
     }
 
     private var matchingTracks: [(track: Track, album: Album, index: Int)] {
-        guard !query.isEmpty else { return [] }
-        var results: [(Track, Album, Int)] = []
-        for album in library.albums {
-            for (index, track) in album.tracks.enumerated() where matches(track.title) || matches(track.artist) {
-                results.append((track, album, index))
-                if results.count == 50 { return results }
-            }
+        results.tracks.compactMap { hit in
+            guard library.albums.indices.contains(hit.albumIndex) else { return nil }
+            let album = library.albums[hit.albumIndex]
+            guard album.tracks.indices.contains(hit.trackIndex), album.tracks[hit.trackIndex].id == hit.id else { return nil }
+            return (album.tracks[hit.trackIndex], album, hit.trackIndex)
         }
-        return results
     }
 }
