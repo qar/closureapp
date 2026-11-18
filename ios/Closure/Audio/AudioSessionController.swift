@@ -14,11 +14,9 @@ final class AudioSessionController {
 
     private let session = AVAudioSession.sharedInstance()
     private var observers: [NSObjectProtocol] = []
+    private var playbackCategoryReady = false
 
     init() {
-        // Long-form audio lets the system route playback the way music apps expect.
-        try? session.setCategory(.playback, mode: .default, policy: .longFormAudio)
-
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification,
                                             object: session, queue: .main) { [weak self] note in
@@ -57,7 +55,7 @@ final class AudioSessionController {
                                             object: session, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                try? self.session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+                self.playbackCategoryReady = false
                 self.onMediaServicesReset()
             }
         })
@@ -66,6 +64,7 @@ final class AudioSessionController {
     /// Asks the hardware to run at the source rate, so neither this app nor the
     /// system has to convert it. Returns the rate the hardware actually uses.
     func activate(preferredSampleRate: Double) throws -> Double {
+        try configurePlaybackCategory()
         if preferredSampleRate > 0 {
             try? session.setPreferredSampleRate(preferredSampleRate)
         }
@@ -74,7 +73,15 @@ final class AudioSessionController {
     }
 
     func activate() throws {
+        try configurePlaybackCategory()
         try session.setActive(true)
+    }
+
+    private func configurePlaybackCategory() throws {
+        guard !playbackCategoryReady else { return }
+        // Failing to set .playback would make lock-screen behavior unpredictable.
+        try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
+        playbackCategoryReady = true
     }
 
     var sampleRate: Double { session.sampleRate }
