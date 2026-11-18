@@ -69,6 +69,42 @@ final class TrashStore {
         return entry
     }
 
+    /// After an album's tracks are gone: moves what is left in its folder (cover,
+    /// booklet) into one trash entry and removes the empty folder. Nothing happens
+    /// while the folder still has audio in it. `folder` is library-relative.
+    @discardableResult
+    func moveLeftoversToTrash(folder: String, album: String, artist: String, now: Date = Date()) -> Entry? {
+        let folderURL = libraryRoot.appendingPathComponent(folder, isDirectory: true)
+        let items = ((try? fileManager.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? [])
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true }
+        guard !items.contains(where: { FileImporter.kind(of: $0) == .audio }) else { return nil }
+        let files = items.filter { FileImporter.kind(of: $0) != .junk }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var entry: Entry?
+        if !files.isEmpty {
+            let id = UUID()
+            let holder = trashRoot.appendingPathComponent(id.uuidString, isDirectory: true)
+            try? fileManager.createDirectory(at: holder, withIntermediateDirectories: true)
+            var moved: [String] = []
+            for file in files where (try? fileManager.moveItem(at: file, to: holder.appendingPathComponent(file.lastPathComponent))) != nil {
+                moved.append(relativeToLibrary(file))
+            }
+            if moved.isEmpty {
+                try? fileManager.removeItem(at: holder)
+            } else {
+                entry = Entry(id: id, originalPath: moved[0], companions: Array(moved.dropFirst()), deletedAt: now,
+                              title: "Album files", artist: artist, album: album)
+                entries.insert(entry!, at: 0)
+                save()
+            }
+        }
+        // Junk and the folder itself are not worth keeping.
+        for item in items where FileImporter.kind(of: item) == .junk { try? fileManager.removeItem(at: item) }
+        if ((try? fileManager.contentsOfDirectory(atPath: folderURL.path)) ?? []).isEmpty {
+            try? fileManager.removeItem(at: folderURL)
+        }
+        return entry
+    }
+
     /// Moves the files back. If the original path is taken, the file gets a new name.
     /// Returns the library-relative path the audio file was restored to.
     @discardableResult

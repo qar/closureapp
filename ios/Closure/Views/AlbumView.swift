@@ -5,6 +5,8 @@ struct AlbumView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
     @State private var pendingDelete: Track?
+    @State private var confirmingAlbumDelete = false
+    @Environment(\.dismiss) private var dismiss
     @State private var editing = false
     @State private var findingInfo = false
 
@@ -18,6 +20,8 @@ struct AlbumView: View {
                         MoreMenu {
                             Button("Edit Album…", systemImage: "pencil") { editing = true }
                             Button("Find Info Online…", systemImage: "magnifyingglass") { findingInfo = true }
+                            Divider()
+                            Button("Delete Album…", systemImage: "trash", role: .destructive) { confirmingAlbumDelete = true }
                         }
                     }
                 }
@@ -66,6 +70,18 @@ struct AlbumView: View {
                     .presentationDragIndicator(.visible)
             }
         }
+        .confirmationDialog("Delete this album?", isPresented: $confirmingAlbumDelete, titleVisibility: .visible) {
+            if let album {
+                Button("Delete \u{201C}\(album.title)\u{201D}", role: .destructive) {
+                    Task {
+                        await library.deleteAlbum(album)
+                        dismiss()
+                    }
+                }
+            }
+        } message: {
+            Text(albumDeleteMessage)
+        }
         .confirmationDialog("Delete this track?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible, presenting: pendingDelete) { track in
             Button("Delete \u{201C}\(track.title)\u{201D}", role: .destructive) {
@@ -74,6 +90,12 @@ struct AlbumView: View {
         } message: { _ in
             Text("It moves to Recently Deleted. You can restore it for 30 days.")
         }
+    }
+
+    private var albumDeleteMessage: String {
+        let count = album?.tracks.count ?? 0
+        let tracks = count == 1 ? "The track moves" : "All \(count) tracks move"
+        return "\(tracks) to Recently Deleted, with the cover and other files in the album's folder. You can restore them for 30 days."
     }
 
     /// Layout "B · small cover side by side" (Figma: MM-Test › Closure iOS).

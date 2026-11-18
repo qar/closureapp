@@ -189,6 +189,21 @@ final class LibraryStore {
         await rescan()
     }
 
+    /// Moves every track of the album to Recently Deleted (one entry each, so any
+    /// of them can come back alone), then the cover and other files left in its
+    /// folder.
+    func deleteAlbum(_ album: Album) async {
+        for track in album.tracks {
+            _ = try? trash.moveToTrash(relativePath: track.id, title: track.title, artist: track.artist, album: track.album)
+        }
+        let folders = Set(album.tracks.map { ($0.id as NSString).deletingLastPathComponent })
+        for folder in folders.sorted(by: { $0.count > $1.count }) where !folder.isEmpty {
+            trash.moveLeftoversToTrash(folder: folder, album: album.title, artist: album.artist)
+        }
+        trashEntries = trash.entries
+        await rescan()
+    }
+
     func restore(_ entry: TrashStore.Entry) async {
         _ = try? trash.restore(entry)
         trashEntries = trash.entries

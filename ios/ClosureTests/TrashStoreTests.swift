@@ -117,4 +117,55 @@ final class TrashStoreTests: XCTestCase {
         XCTAssertThrowsError(try trash("Nope/01.flac", store: store))
         XCTAssertTrue(store.entries.isEmpty)
     }
+
+    // MARK: - Whole albums
+
+    func testDeletingAnAlbumMovesEveryTrackAndTheLeftoverFolderFiles() throws {
+        try makeFile("Album/01 Song.flac")
+        try makeFile("Album/01 Song.lrc")
+        try makeFile("Album/02 Song.flac")
+        try makeFile("Album/cover.jpg")
+        try makeFile("Album/booklet.pdf")
+        try makeFile("Album/.DS_Store")
+        try makeFile("Other/01.flac")
+        let store = TrashStore(libraryRoot: library, trashRoot: trashRoot)
+
+        try trash("Album/01 Song.flac", store: store)
+        try trash("Album/02 Song.flac", store: store)
+        let leftovers = store.moveLeftoversToTrash(folder: "Album", album: "B", artist: "A")
+
+        XCTAssertEqual(store.entries.count, 3)
+        XCTAssertEqual(leftovers?.originalPath, "Album/booklet.pdf")
+        XCTAssertEqual(leftovers?.companions, ["Album/cover.jpg"])
+        XCTAssertEqual(leftovers?.title, "Album files")
+        XCTAssertFalse(fileManager.fileExists(atPath: library.appendingPathComponent("Album").path), "the empty album folder goes too")
+        XCTAssertTrue(exists("Other/01.flac"))
+    }
+
+    func testLeftoversStayWhenAudioRemainsInTheFolder() throws {
+        try makeFile("Album/01 Song.flac")
+        try makeFile("Album/02 Song.flac")
+        try makeFile("Album/cover.jpg")
+        let store = TrashStore(libraryRoot: library, trashRoot: trashRoot)
+
+        try trash("Album/01 Song.flac", store: store)
+        XCTAssertNil(store.moveLeftoversToTrash(folder: "Album", album: "B", artist: "A"))
+        XCTAssertTrue(exists("Album/cover.jpg"))
+        XCTAssertEqual(store.entries.count, 1)
+    }
+
+    func testRestoringAnAlbumBringsBackTracksCoverAndFolder() throws {
+        try makeFile("Album/01 Song.flac")
+        try makeFile("Album/cover.jpg")
+        let store = TrashStore(libraryRoot: library, trashRoot: trashRoot)
+        try trash("Album/01 Song.flac", store: store)
+        _ = store.moveLeftoversToTrash(folder: "Album", album: "B", artist: "A")
+        XCTAssertFalse(exists("Album/cover.jpg"))
+
+        for entry in store.entries { try store.restore(entry) }
+
+        XCTAssertTrue(exists("Album/01 Song.flac"))
+        XCTAssertTrue(exists("Album/cover.jpg"))
+        XCTAssertTrue(store.entries.isEmpty)
+    }
 }

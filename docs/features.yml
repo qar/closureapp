@@ -288,7 +288,20 @@ features:
     acceptance:
       - 删除的文件先进"最近删除"，到期后才真正清除，期间可以恢复。
       - 批量删除前要确认。
-    notes: iOS 已实现（2026-11-16）：删除后文件连同同名歌词、CUE 移入 Application Support/Trash，可原位恢复（重名时另存为“名称 2”），30 天后启动时清除，全部删除前确认。保留期 30 天待用户最终确认。目前只有单曲删除，批量选择尚未实现（见 library.batch-ops）。
+    notes: iOS 已实现（2026-11-16）：删除后文件连同同名歌词、CUE 移入 Application Support/Trash，可原位恢复（重名时另存为“名称 2”），30 天后启动时清除，全部删除前确认。保留期 30 天待用户最终确认。单曲删除和整张专辑删除（library.delete-album）已有，批量选择尚未实现（见 library.batch-ops）。
+
+  - id: library.delete-album
+    title: 删除整张专辑
+    category: library
+    priority: P0
+    platforms: { ios: done }
+    why: [principles（任何删除都要用户确认）, 用户反馈 2026-11-17（App 中缺少移除专辑的能力）]
+    acceptance:
+      - 专辑页的"…"菜单有"Delete Album…"，确认框写明曲目数和去向。
+      - 每首曲目单独进"最近删除"，可以只恢复其中一首。
+      - 专辑文件夹里剩下的封面、小册子等文件随后进"最近删除"（一条记录），空文件夹被移除；文件夹里还有其他专辑的音频时不动这些文件。
+      - 恢复全部记录后曲目、封面和文件夹回到原位（单元测试覆盖）。
+    notes: iOS 已实现（2026-11-17）。专辑元数据覆盖（标题、封面）留在数据库里，恢复后仍然生效。
 
   - id: library.storage-view
     title: 存储页：总占用、每张专辑的大小、剩余空间
