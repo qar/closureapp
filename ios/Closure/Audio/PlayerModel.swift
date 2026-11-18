@@ -483,26 +483,18 @@ final class PlayerModel {
     private func updateNowPlaying() {
         guard let track = currentTrack else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            MPNowPlayingInfoCenter.default().playbackState = .stopped
             return
         }
 
         let status = engine.status
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: track.title,
-            MPMediaItemPropertyPlaybackDuration: status.durationSeconds > 0 ? status.durationSeconds : track.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: pendingPosition ?? status.positionSeconds,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyPlaybackQueueIndex: currentIndex,
-            MPNowPlayingInfoPropertyPlaybackQueueCount: queue.count,
-        ]
-        if !track.artist.isEmpty { info[MPMediaItemPropertyArtist] = track.artist }
-        if !track.album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = track.album }
-        if let cached = nowPlayingArtwork, cached.key == track.artworkRequest.key {
-            info[MPMediaItemPropertyArtwork] = cached.artwork
-        } else {
-            loadArtwork(for: track)
-        }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let artwork = nowPlayingArtwork?.key == track.artworkRequest.key ? nowPlayingArtwork?.artwork : nil
+        let snapshot = NowPlayingSnapshot.make(track: track, position: pendingPosition ?? status.positionSeconds,
+                                               duration: status.durationSeconds, isPlaying: isPlaying,
+                                               queueIndex: currentIndex, queueCount: queue.count, artwork: artwork)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = snapshot.info
+        MPNowPlayingInfoCenter.default().playbackState = snapshot.playbackState
+        if artwork == nil { loadArtwork(for: track) }
     }
 
     private func loadArtwork(for track: Track) {
@@ -510,7 +502,7 @@ final class PlayerModel {
         let request = track.artworkRequest
         artworkTask = Task { [weak self] in
             guard let image = await ArtworkStore.shared.image(for: request, pixelSize: 600),
-                  !Task.isCancelled, let self, self.currentTrack?.albumKey == track.albumKey else { return }
+                  !Task.isCancelled, let self, self.currentTrack?.artworkRequest.key == request.key else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             self.nowPlayingArtwork = (request.key, artwork)
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
