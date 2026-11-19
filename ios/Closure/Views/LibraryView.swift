@@ -180,7 +180,7 @@ struct LibraryView: View {
             }
             IconButton(systemName: "magnifyingglass", label: "Search") { showingSearch = true }
             Menu {
-                Button("From Files", systemImage: "folder") { showingImporter = true }
+                Button("From Files or iCloud Drive", systemImage: "folder") { showingImporter = true }
                 Button("From Google Drive", systemImage: "icloud.and.arrow.down") { openGoogleDrive() }
             } label: {
                 Image(systemName: "plus")
