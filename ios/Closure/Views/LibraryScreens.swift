@@ -45,7 +45,7 @@ struct EmptyLibraryView: View {
                 .padding(.horizontal, 48)
                 .padding(.top, 12)
 
-            Button(action: onImport) { Text("Import from Files or iCloud Drive") }
+            Button(action: onImport) { Text("Import from Files") }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.horizontal, 48)
                 .padding(.top, 36)
