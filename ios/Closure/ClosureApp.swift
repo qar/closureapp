@@ -68,8 +68,8 @@ struct ClosureApp: App {
                         }
                     }
                 }
-                .onChange(of: library.albums) { _, albums in
-                    player.refreshTracks(from: albums)
+                .onChange(of: library.searchRevision) { _, _ in
+                    player.refreshTracks(from: library.allTracks)
                     CarPlayController.shared.refresh()
                 }
                 .onChange(of: library.playlists) { _, _ in CarPlayController.shared.refresh() }
@@ -80,7 +80,7 @@ struct ClosureApp: App {
                     // Put back what was playing last time, paused.
                     // Debug screens start their own playback.
                     if loaded, !ProcessInfo.processInfo.arguments.contains("-ClosureScreen") {
-                        player.restore(from: library.albums)
+                        player.restore(from: library.allTracks)
                     }
 #if DEBUG
                     // -ClosureResume: press play after the restore and log where playback is.

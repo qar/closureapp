@@ -38,4 +38,13 @@ final class LibrarySearchIndexTests: XCTestCase {
         XCTAssertEqual(index.search("beyonce").tracks.map(\.id), ["jazz/song"])
         XCTAssertEqual(index.search("  "), .init())
     }
+
+    func testSearchFindsUnassignedTrackWithoutInventingAlbum() {
+        let index = LibrarySearchIndex(documents: documents,
+                                       unassignedTracks: [.init(id: "loose/song", title: "遗失录音", artist: "", composer: nil)])
+        let results = index.search("遗失录音")
+        XCTAssertTrue(results.albums.isEmpty)
+        XCTAssertEqual(results.tracks.map(\.id), ["loose/song"])
+        XCTAssertNil(results.tracks[0].albumIndex)
+    }
 }

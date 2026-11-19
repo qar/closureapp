@@ -16,6 +16,7 @@ enum LibraryRoute: Hashable {
 
 enum LibraryTab: String, CaseIterable, Identifiable {
     case albums = "Albums"
+    case tracks = "Tracks"
     case artists = "Artists"
     case playlists = "Playlists"
     var id: String { rawValue }
@@ -35,6 +36,9 @@ struct LibraryView: View {
     @State private var namingPlaylist = false
     @State private var newPlaylistName = ""
     @State private var downloadsAfterDrive = false
+    @State private var editingTrack: Track?
+    @State private var movingTrack: Track?
+    @State private var pendingDelete: Track?
     @Environment(DriveDownloadManager.self) private var downloads
     @Environment(GoogleDriveAccount.self) private var driveAccount
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
@@ -51,7 +55,7 @@ struct LibraryView: View {
                 if !library.isLoaded {
                     // The database loads in well under a second; show plain paper meanwhile.
                     Theme.paper
-                } else if library.albums.isEmpty {
+                } else if library.allTracks.isEmpty {
                     EmptyLibraryView(isImporting: library.isImporting || library.scanProgress != nil,
                                      progress: library.scanProgress,
                                      onImport: { showingImporter = true },
@@ -125,6 +129,25 @@ struct LibraryView: View {
             DownloadsView()
                 .presentationBackground(Theme.paper)
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $editingTrack) { track in
+            TrackEditView(track: track).presentationBackground(Theme.paper)
+        }
+        .sheet(item: $movingTrack) { track in
+            AlbumDestinationView(tracks: [track], currentAlbumID: "", onMoved: {})
+                .presentationBackground(Theme.paper)
+        }
+        .onChange(of: library.searchRevision) { _, _ in
+            if tab == .albums, library.albums.isEmpty, !library.allTracks.isEmpty { tab = .tracks }
+        }
+        .confirmationDialog("Delete this track?", isPresented: Binding(get: { pendingDelete != nil },
+                                                                         set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible, presenting: pendingDelete) { track in
+            Button("Delete \u{201C}\(track.title)\u{201D}", role: .destructive) {
+                Task { await library.delete(track) }
+            }
+        } message: { _ in
+            Text("It moves to Recently Deleted. You can restore it for 30 days.")
         }
         .alert("Some files need attention", isPresented: Binding(get: { library.fileNotice != nil }, set: { if !$0 { library.fileNotice = nil } }),
                presenting: library.fileNotice) { _ in
@@ -229,6 +252,9 @@ struct LibraryView: View {
         case .albums:
             countRow(left: "\(library.albums.count) albums", right: scanText ?? "Sort: Artist")
             AlbumGrid(albums: library.albums)
+        case .tracks:
+            countRow(left: "\(library.allTracks.count) tracks", right: scanText ?? "A–Z")
+            trackRows
         case .artists:
             let artists = artistsList
             countRow(left: "\(artists.count) artists", right: "A–Z")
@@ -247,6 +273,30 @@ struct LibraryView: View {
                 return ListRow(title: playlist.name, meta: "\(count) track\(count == 1 ? "" : "s")", route: .playlist(playlist.id))
             })
         }
+    }
+
+    private var trackRows: some View {
+        LazyVStack(spacing: 0) {
+            Hairline()
+            ForEach(Array(library.allTracks.enumerated()), id: \.element.id) { index, track in
+                Button { player.play(library.allTracks, from: index, context: "Tracks") } label: {
+                    TrackRow(number: nil, title: track.title,
+                             subtitle: [track.artist, track.album].filter { !$0.isEmpty }.joined(separator: " · "),
+                             duration: track.duration, isCurrent: player.currentTrack?.id == track.id)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    TrackMenuItems(tracks: [track], context: "Tracks")
+                    Divider()
+                    Button("Edit Track…", systemImage: "pencil") { editingTrack = track }
+                    Button("Move to Album…", systemImage: "square.on.square") { movingTrack = track }
+                    Divider()
+                    Button("Delete…", systemImage: "trash", role: .destructive) { pendingDelete = track }
+                }
+                Hairline()
+            }
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
     }
 
     static func noticeText(_ notice: LibraryStore.FileNotice) -> String {
@@ -336,8 +386,16 @@ struct LibraryView: View {
     // MARK: - Derived lists
 
     private var artistsList: [(name: String, albums: Int, tracks: Int)] {
-        Dictionary(grouping: library.albums, by: \.artist)
-            .map { ($0.key, $0.value.count, $0.value.reduce(0) { $0 + $1.tracks.count }) }
+        var counts: [String: (albums: Int, tracks: Int)] = [:]
+        for album in library.albums {
+            counts[album.artist, default: (0, 0)].albums += 1
+            counts[album.artist, default: (0, 0)].tracks += album.tracks.count
+        }
+        for track in library.unassignedTracks {
+            let artist = track.artist.isEmpty ? "Unknown Artist" : track.artist
+            counts[artist, default: (0, 0)].tracks += 1
+        }
+        return counts.map { ($0.key, $0.value.albums, $0.value.tracks) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 

@@ -7,7 +7,7 @@ import SQLite3
 /// table is the source of truth for metadata; the files keep the layout they were
 /// imported with. Not thread safe: one owner (LibraryCatalog) uses it at a time.
 final class LibraryDatabase {
-    static let schemaVersion = 4
+    static let schemaVersion = 5
 
     enum DatabaseError: Error, CustomStringConvertible {
         case sqlite(String)
@@ -159,6 +159,20 @@ final class LibraryDatabase {
                     composer TEXT, genre TEXT, group_key TEXT
                 ) WITHOUT ROWID;
                 PRAGMA user_version = 4;
+                """)
+        }
+        if version < 5 {
+            try execute("""
+                INSERT INTO track_overrides (track_id, group_key)
+                SELECT id, album_key FROM tracks
+                WHERE album_key IN (
+                    SELECT album_key FROM album_overrides
+                    UNION SELECT group_key FROM track_overrides WHERE group_key IS NOT NULL
+                ) AND album_key LIKE 'folder%'
+                ON CONFLICT(track_id) DO UPDATE SET group_key = excluded.group_key
+                WHERE track_overrides.group_key IS NULL AND track_overrides.album IS NULL;
+                UPDATE tracks SET modified = -62135769600;
+                PRAGMA user_version = 5;
                 """)
         }
     }

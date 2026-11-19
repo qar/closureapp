@@ -13,14 +13,11 @@ import Observation
 @MainActor
 @Observable
 final class LibraryStore {
-    private(set) var albums: [Album] = [] {
-        didSet {
-            tracksByID = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            searchRevision &+= 1
-        }
-    }
+    private(set) var albums: [Album] = []
+    private(set) var unassignedTracks: [Track] = []
+    private(set) var allTracks: [Track] = []
     private(set) var searchRevision = 0
-    /// Every track by its path, for playlists.
+    /// Every track by its path, for playlists and playback restoration.
     @ObservationIgnored private(set) var tracksByID: [String: Track] = [:]
     /// Favorites first, then the user's playlists in the order they were made.
     private(set) var playlists: [Playlist] = []
@@ -42,7 +39,7 @@ final class LibraryStore {
     /// Problems found by the last scan, to tell the user once.
     var fileNotice: FileNotice?
     /// Tracks the engine cannot read (unsupported or damaged files).
-    var unreadableTracks: [Track] { albums.flatMap(\.tracks).filter(\.isUnreadable) }
+    var unreadableTracks: [Track] { allTracks.filter(\.isUnreadable) }
     /// Space used by the library and Recently Deleted, and free space. Measured after
     /// each scan and after Recently Deleted changes.
     private(set) var storage: StorageSummary?
@@ -117,13 +114,13 @@ final class LibraryStore {
             if let count = Self.debugSeedCount { await catalog.seedSynthetic(count: count) }
 #endif
             let started = Date()
-            let albums = await catalog.load()
+            let snapshot = await catalog.load()
             guard let self else { return }
-            self.albums = albums
+            self.apply(snapshot)
             self.playlists = await catalog.playlists()
             self.isLoaded = true
             print(String(format: "[Closure] loaded %d tracks in %d albums in %.0f ms",
-                         albums.reduce(0) { $0 + $1.tracks.count }, albums.count, Date().timeIntervalSince(started) * 1000))
+                         allTracks.count, albums.count, Date().timeIntervalSince(started) * 1000))
         }
     }
 
@@ -229,9 +226,8 @@ final class LibraryStore {
     /// Moves files to Recently Deleted (extra copies, unreadable files). `paths` are
     /// library-relative.
     func moveFilesToTrash(_ paths: [String]) async {
-        let tracks = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for path in paths {
-            let track = tracks[path]
+            let track = tracksByID[path]
             _ = try? trash.moveToTrash(relativePath: path, title: track?.title ?? (path as NSString).lastPathComponent,
                                        artist: track?.artist ?? "", album: track?.album ?? "")
         }
@@ -272,10 +268,10 @@ final class LibraryStore {
         repeat {
             rescanRequested = false
             let started = Date()
-            let albums = await catalog.scan(root: Self.libraryFolder) { [weak self] progress in
+            let snapshot = await catalog.scan(root: Self.libraryFolder) { [weak self] progress in
                 await self?.apply(progress)
             }
-            self.albums = albums
+            apply(snapshot)
             print(String(format: "[Closure] scan finished in %.0f ms, %d files read", Date().timeIntervalSince(started) * 1000, scanProgress?.total ?? 0))
             await noteFileProblems()
             scanProgress = nil
@@ -406,7 +402,7 @@ final class LibraryStore {
         if let oldCover, oldCover != override.artworkFile {
             try? FileManager.default.removeItem(at: AlbumOverrides.coversFolder.appendingPathComponent(oldCover))
         }
-        albums = await catalog.setOverride(override)
+        apply(await catalog.setOverride(override))
     }
 
     /// Clears every edit of the album, including a chosen cover.
@@ -419,19 +415,19 @@ final class LibraryStore {
     }
 
     func saveTrackEdit(_ edit: TrackOverride) async throws {
-        albums = try await catalog.saveTrackOverride(edit)
+        apply(try await catalog.saveTrackOverride(edit))
     }
 
     func moveTracks(_ tracks: [Track], to albumID: String) async throws {
-        albums = try await catalog.moveTracks(tracks.map(\.id), to: albumID, newAlbum: nil)
+        apply(try await catalog.moveTracks(tracks.map(\.id), to: albumID, newAlbum: nil))
     }
 
     func moveTracks(_ tracks: [Track], toNewAlbum title: String, artist: String) async throws {
-        albums = try await catalog.moveTracks(tracks.map(\.id), to: nil, newAlbum: (title, artist))
+        apply(try await catalog.moveTracks(tracks.map(\.id), to: nil, newAlbum: (title, artist)))
     }
 
     func restoreFileAlbum(for tracks: [Track]) async throws {
-        albums = try await catalog.restoreFileAlbum(for: tracks.map(\.id))
+        apply(try await catalog.restoreFileAlbum(for: tracks.map(\.id)))
     }
 
     /// Stores a picked image as a square JPEG (the middle of it) of at most 1500 px.
@@ -480,7 +476,18 @@ final class LibraryStore {
 
     private func apply(_ progress: LibraryCatalog.Progress) {
         scanProgress = (progress.done, progress.total)
-        if let albums = progress.albums { self.albums = albums }
+        if let snapshot = progress.snapshot { apply(snapshot) }
+    }
+
+    private func apply(_ snapshot: LibrarySnapshot) {
+        albums = snapshot.albums
+        unassignedTracks = snapshot.unassignedTracks
+        allTracks = (snapshot.albums.flatMap(\.tracks) + snapshot.unassignedTracks).sorted {
+            let order = $0.title.localizedStandardCompare($1.title)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
+        tracksByID = Dictionary(allTracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        searchRevision &+= 1
     }
 
 #if DEBUG

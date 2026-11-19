@@ -222,9 +222,13 @@ struct AlbumView: View {
 struct ArtistView: View {
     let artist: String
     @Environment(LibraryStore.self) private var library
+    @Environment(PlayerModel.self) private var player
 
     var body: some View {
         let albums = library.albums.filter { $0.artist == artist }
+        let tracks = library.unassignedTracks.filter {
+            ($0.artist.isEmpty ? "Unknown Artist" : $0.artist) == artist
+        }
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 BackBar(title: "Artists")
@@ -236,11 +240,30 @@ struct ArtistView: View {
                     .padding(.horizontal, Theme.horizontalMargin)
                     .padding(.top, 8)
                     .accessibilityAddTraits(.isHeader)
-                MetaText("\(albums.count) album\(albums.count == 1 ? "" : "s")", size: 10)
+                MetaText("\(albums.count) album\(albums.count == 1 ? "" : "s") · \(tracks.count) without album", size: 10)
                     .padding(.horizontal, Theme.horizontalMargin)
                     .padding(.top, 6)
                     .padding(.bottom, 24)
                 AlbumGrid(albums: albums)
+                if !tracks.isEmpty {
+                    MetaText("Tracks", size: 10, color: Theme.ink)
+                        .padding(.horizontal, Theme.horizontalMargin)
+                        .padding(.top, albums.isEmpty ? 0 : 28)
+                        .padding(.bottom, 10)
+                    LazyVStack(spacing: 0) {
+                        Hairline()
+                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                            Button { player.play(tracks, from: index, context: artist) } label: {
+                                TrackRow(number: nil, title: track.title, duration: track.duration,
+                                         isCurrent: player.currentTrack?.id == track.id)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu { TrackMenuItems(tracks: [track], context: artist) }
+                            Hairline()
+                        }
+                    }
+                    .padding(.horizontal, Theme.horizontalMargin)
+                }
             }
             .padding(.bottom, 32)
         }
@@ -256,7 +279,7 @@ struct FolderView: View {
     @Environment(PlayerModel.self) private var player
 
     var body: some View {
-        let tracks = library.albums.flatMap(\.tracks)
+        let tracks = library.allTracks
             .filter { $0.folder == folder }
             .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
         let name = folder.split(separator: "/").last.map(String.init) ?? "Library"

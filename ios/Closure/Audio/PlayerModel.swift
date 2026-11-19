@@ -187,9 +187,9 @@ final class PlayerModel {
     }
 
     /// Picks up library changes (an edited album title or cover) for tracks in the queue.
-    func refreshTracks(from albums: [Album]) {
+    func refreshTracks(from tracks: [Track]) {
         guard !queue.isEmpty else { return }
-        let library = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let library = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let updated = queue.map { library[$0.id] ?? $0 }
         guard updated != queue else { return }
         queue = updated
@@ -255,9 +255,9 @@ final class PlayerModel {
 
     /// Puts back the queue and position saved last time, paused. Does nothing when
     /// something is already playing or nothing usable was saved.
-    func restore(from albums: [Album]) {
+    func restore(from tracks: [Track]) {
         guard queue.isEmpty, let saved = PlaybackState.load(from: stateURL) else { return }
-        let library = Dictionary(albums.flatMap(\.tracks).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let library = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         guard let restored = saved.restore(from: library) else { return }
         queue = restored.tracks
         currentIndex = restored.index

@@ -29,7 +29,7 @@ final class NowPlayingSnapshotTests: XCTestCase {
                                                duration: 0, isPlaying: false, queueIndex: 0,
                                                queueCount: 1, artwork: nil)
         XCTAssertEqual(snapshot.info[MPMediaItemPropertyArtist] as? String, "Unknown Artist")
-        XCTAssertEqual(snapshot.info[MPMediaItemPropertyAlbumTitle] as? String, "Unknown Album")
+        XCTAssertNil(snapshot.info[MPMediaItemPropertyAlbumTitle])
         XCTAssertEqual(snapshot.info[MPMediaItemPropertyPlaybackDuration] as? Double, 180)
         XCTAssertEqual(snapshot.info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double, 180)
         XCTAssertEqual(snapshot.info[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 0)
