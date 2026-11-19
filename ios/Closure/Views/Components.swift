@@ -63,7 +63,7 @@ struct MiniPlayer: View {
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(Theme.ink)
                                     .lineLimit(1)
-                                Text(track.artist.isEmpty ? track.album : track.artist)
+                                Text(track.artist.isEmpty ? "Unknown Artist" : track.artist)
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.muted)
                                     .lineLimit(1)
@@ -143,7 +143,7 @@ struct TrackRow: View {
                 .font(Theme.mono(12, medium: false))
                 .foregroundStyle(Theme.muted)
         }
-        .padding(.vertical, subtitle == nil ? 17 : 11)
+        .padding(.vertical, subtitle?.isEmpty == false ? 11 : 17)
         .contentShape(Rectangle())
     }
 }

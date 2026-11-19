@@ -262,16 +262,16 @@ struct SearchView: View {
                         Hairline()
                         ForEach(tracks, id: \.track.id) { item in
                             Button {
-                                player.play(item.album.tracks, from: item.index, context: item.album.title)
+                                player.play(item.queue, from: item.index, context: item.context)
                                 dismiss()
                             } label: {
                                 TrackRow(number: nil, title: item.track.title,
-                                         subtitle: "\(item.track.artist) — \(item.album.title)",
+                                         subtitle: [item.track.artist, item.track.album].filter { !$0.isEmpty }.joined(separator: " · "),
                                          duration: item.track.duration,
                                          isCurrent: player.currentTrack?.id == item.track.id)
                             }
                             .buttonStyle(.plain)
-                            .contextMenu { TrackMenuItems(tracks: [item.track], context: item.album.title) }
+                            .contextMenu { TrackMenuItems(tracks: [item.track], context: item.context) }
                             Hairline()
                         }
                     }
@@ -306,8 +306,12 @@ struct SearchView: View {
                                                          artist: track.artist, composer: track.composer)
                     })
             }
+            let unassigned = library.unassignedTracks.map { track in
+                LibrarySearchIndex.TrackDocument(id: track.id, title: track.title,
+                                                 artist: track.artist, composer: track.composer)
+            }
             let built = await Task.detached(priority: .userInitiated) {
-                LibrarySearchIndex(documents: documents)
+                LibrarySearchIndex(documents: documents, unassignedTracks: unassigned)
             }.value
             guard !Task.isCancelled else { return }
             index = built
@@ -334,12 +338,17 @@ struct SearchView: View {
         }
     }
 
-    private var matchingTracks: [(track: Track, album: Album, index: Int)] {
+    private var matchingTracks: [(track: Track, queue: [Track], index: Int, context: String)] {
         results.tracks.compactMap { hit in
-            guard library.albums.indices.contains(hit.albumIndex) else { return nil }
-            let album = library.albums[hit.albumIndex]
-            guard album.tracks.indices.contains(hit.trackIndex), album.tracks[hit.trackIndex].id == hit.id else { return nil }
-            return (album.tracks[hit.trackIndex], album, hit.trackIndex)
+            if let albumIndex = hit.albumIndex {
+                guard library.albums.indices.contains(albumIndex) else { return nil }
+                let album = library.albums[albumIndex]
+                guard album.tracks.indices.contains(hit.trackIndex), album.tracks[hit.trackIndex].id == hit.id else { return nil }
+                return (album.tracks[hit.trackIndex], album.tracks, hit.trackIndex, album.title)
+            }
+            guard library.unassignedTracks.indices.contains(hit.trackIndex),
+                  library.unassignedTracks[hit.trackIndex].id == hit.id else { return nil }
+            return (library.unassignedTracks[hit.trackIndex], library.unassignedTracks, hit.trackIndex, "Tracks")
         }
     }
 }

@@ -1,4 +1,5 @@
 import XCTest
+import SQLite3
 
 final class LibraryDatabaseTests: XCTestCase {
     private var folder: URL!
@@ -58,6 +59,37 @@ final class LibraryDatabaseTests: XCTestCase {
         let db = try database()
         try db.upsert([track("a.flac", size: 42, modified: 123.5)])
         XCTAssertEqual(try db.stamps(), ["a.flac": .init(size: 42, modified: 123.5)])
+    }
+
+    func testLegacyAlbumEditsKeepTheirMembershipAndTagsAreRescanned() throws {
+        let path = folder.appendingPathComponent("library.sqlite")
+        let legacyKey = "folder\u{1F}Mixed\u{1F}release"
+        do {
+            let db = try database()
+            try db.upsert([track("Mixed/a.flac", album: "Release", albumArtist: nil),
+                           track("Mixed/b.flac", album: "Release", albumArtist: nil),
+                           track("Mixed/c.flac", album: "Release", albumArtist: nil),
+                           track("Loose/b.flac", album: "Loose", albumArtist: nil)])
+            try db.setOverride(AlbumOverride(albumKey: legacyKey, title: "Edited Release", artist: nil,
+                                             year: nil, artworkFile: nil))
+            try db.saveTrackOverrides([TrackOverride(trackID: "Mixed/b.flac", title: "Edited Track"),
+                                       TrackOverride(trackID: "Mixed/c.flac", album: "Different Release")])
+        }
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(path.path, &handle), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        let downgrade = "UPDATE tracks SET album_key = '\(legacyKey)' WHERE id LIKE 'Mixed/%'; PRAGMA user_version = 4;"
+        XCTAssertEqual(sqlite3_exec(handle, downgrade, nil, nil, nil), SQLITE_OK)
+
+        let reopened = try database()
+        XCTAssertEqual(try reopened.allTrackOverrides()["Mixed/a.flac"]?.groupKey, legacyKey)
+        XCTAssertEqual(try reopened.allTrackOverrides()["Mixed/b.flac"]?.groupKey, legacyKey)
+        XCTAssertEqual(try reopened.allTrackOverrides()["Mixed/b.flac"]?.title, "Edited Track")
+        XCTAssertNil(try reopened.allTrackOverrides()["Mixed/c.flac"]?.groupKey)
+        XCTAssertEqual(try reopened.allTrackOverrides()["Mixed/c.flac"]?.album, "Different Release")
+        XCTAssertNil(try reopened.allTrackOverrides()["Loose/b.flac"])
+        XCTAssertEqual(try reopened.allOverrides()[legacyKey]?.title, "Edited Release")
+        XCTAssertEqual(Set(try reopened.stamps().values.map(\.modified)), [-62135769600])
     }
 
     func testScanDiff() {

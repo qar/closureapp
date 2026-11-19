@@ -22,7 +22,7 @@ struct LibrarySearchIndex: Sendable {
     }
 
     struct TrackHit: Sendable, Equatable {
-        let albumIndex: Int
+        let albumIndex: Int?
         let trackIndex: Int
         let id: String
     }
@@ -73,7 +73,7 @@ struct LibrarySearchIndex: Sendable {
     private let albums: [AlbumEntry]
     private let tracks: [TrackEntry]
 
-    init(documents: [AlbumDocument]) {
+    init(documents: [AlbumDocument], unassignedTracks: [TrackDocument] = []) {
         var cache: [String: Key] = [:]
         func key(_ text: String) -> Key {
             if let cached = cache[text] { return cached }
@@ -94,6 +94,12 @@ struct LibrarySearchIndex: Sendable {
                 trackEntries.append(TrackEntry(hit: TrackHit(albumIndex: albumIndex, trackIndex: trackIndex,
                                                               id: track.id), keys: keys))
             }
+        }
+        for (trackIndex, track) in unassignedTracks.enumerated() {
+            var keys = [key(track.title), key(track.artist)]
+            if let composer = track.composer { keys.append(key(composer)) }
+            trackEntries.append(TrackEntry(hit: TrackHit(albumIndex: nil, trackIndex: trackIndex,
+                                                          id: track.id), keys: keys))
         }
         albums = albumEntries
         tracks = trackEntries

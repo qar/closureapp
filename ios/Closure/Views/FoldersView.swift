@@ -6,7 +6,7 @@ struct FoldersView: View {
     @Environment(LibraryStore.self) private var library
 
     var body: some View {
-        let folders = Dictionary(grouping: library.albums.flatMap(\.tracks), by: \.folder)
+        let folders = Dictionary(grouping: library.allTracks, by: \.folder)
             .map { (path: $0.key, tracks: $0.value.count) }
             .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         ScrollView {

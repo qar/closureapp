@@ -1,15 +1,17 @@
 import XCTest
 
 final class AlbumOverrideTests: XCTestCase {
-    private func track(_ id: String, album: String, artist: String, albumArtist: String? = nil, year: Int? = 2012) -> Track {
+    private func track(_ id: String, album: String, artist: String, albumArtist: String? = nil,
+                       year: Int? = 2012, compilation: Bool? = nil) -> Track {
         Track(id: id, title: id, artist: artist, album: album, trackNumber: 1, duration: 60, codec: "FLAC",
               sampleRate: 44100, bitDepth: 16, fileSize: 1, modified: Date(timeIntervalSince1970: 0),
-              year: year, albumArtist: albumArtist, discNumber: nil, composer: nil, genre: nil, isCompilation: nil)
+              year: year, albumArtist: albumArtist, discNumber: nil, composer: nil, genre: nil, isCompilation: compilation)
     }
 
     func testOverrideChangesWhatIsShownButNotTheIdentity() throws {
         let albums = LibraryGrouping.albums(from: [
-            track("Z/01.flac", album: "Zz", artist: "ÃÂ"), track("Z/02.flac", album: "Zz", artist: "Guest"),
+            track("Z/01.flac", album: "Zz", artist: "ÃÂ", compilation: true),
+            track("Z/02.flac", album: "Zz", artist: "Guest", compilation: true),
             track("B/01.flac", album: "Beta", artist: "Bob"),
         ])
         let key = try XCTUnwrap(albums.first { $0.title == "Zz" }?.id)
