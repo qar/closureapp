@@ -268,7 +268,7 @@ features:
     title: 导入失败或中断时不丢文件、不留残缺专辑
     category: library
     priority: P0
-    platforms: { ios: partial }
+    platforms: { ios: done }
     acceptance:
       - 收件箱只移除已成功进入曲库的文件，只删除已清空的文件夹（单元测试覆盖）。
       - 导入前检查剩余空间，不够时不开始导入。
@@ -280,7 +280,9 @@ features:
       新专辑以目录重命名一次提交；已有目录记录目标路径，失败时回滚，重启后续完。
       Finder 来源在整批成功后才删除。单元测试覆盖损坏复制、提交失败和两种恢复路径。
       2026-11-18 补齐“文件”App 导入时对不支持文件及无音频文件夹的结果报告；整张专辑重复时也会报告未导入的文件。
-      iCloud Drive 未下载文件仍需真机验证，故保持 partial。
+      2026-11-18 Entropy 真机从 iCloud Drive 导入未下载的 M4A 成功：单文件进入私有曲库，
+      SQLite 曲目大小与文件实际大小同为 8,519,520 字节，暂存区为空。来源通过复制模式导入，
+      不会被修改或删除。本项验收完成。
 
   - id: library.target-folder
     title: 导入时选择放进曲库中的哪个文件夹
