@@ -16,7 +16,7 @@ struct AlbumDestinationView: View {
             List {
                 if tracks.contains(where: { $0.groupingKeyOverride != nil }) {
                     Section {
-                        Button("Return to File Album", systemImage: "arrow.uturn.backward") {
+                        Button("Use File Tags", systemImage: "arrow.uturn.backward") {
                             perform { try await library.restoreFileAlbum(for: tracks) }
                         }
                         .disabled(saving)

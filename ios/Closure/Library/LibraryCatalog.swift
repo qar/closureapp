@@ -21,13 +21,12 @@ enum TrackReader {
         let fileName = url.deletingPathExtension().lastPathComponent
         let parentName = url.deletingLastPathComponent().lastPathComponent
         // Without a disc tag, a "CD2" folder still says which disc this is.
-        let discFromFolder = LibraryGrouping.discNumber(fromFolderName: parentName)
-        let albumFolderName = discFromFolder != nil ? url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent : parentName
+        let discFromFolder = tags.album == nil ? nil : LibraryGrouping.discNumber(fromFolderName: parentName)
 
         return Track(id: id,
                      title: tags.title ?? fileName,
                      artist: tags.artist ?? "",
-                     album: tags.album ?? albumFolderName,
+                     album: tags.album ?? "",
                      // "01 Title.flac" style names when the tag is missing.
                      trackNumber: tags.trackNumber ?? Int(url.lastPathComponent.prefix { $0.isNumber }) ?? 0,
                      duration: info.durationSeconds,
@@ -49,7 +48,7 @@ actor LibraryCatalog {
         var done: Int
         var total: Int
         /// Albums as they stand, sent about once a second while files are read.
-        var albums: [Album]?
+        var snapshot: LibrarySnapshot?
     }
 
     private let database: LibraryDatabase?
@@ -71,7 +70,7 @@ actor LibraryCatalog {
     }
 
     /// Loads every row and groups it into albums.
-    func load() -> [Album] {
+    func load() -> LibrarySnapshot {
         let rows = (try? database?.allTracks()) ?? []
         tracks = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         overrides = (try? database?.allOverrides()) ?? [:]
@@ -82,7 +81,7 @@ actor LibraryCatalog {
     /// Brings the database in line with the files under `root`. Unchanged files are
     /// skipped by size and modification time; new or changed files are read four at a
     /// time and written in batches.
-    func scan(root: URL, progress: @escaping @Sendable (Progress) async -> Void) async -> [Album] {
+    func scan(root: URL, progress: @escaping @Sendable (Progress) async -> Void) async -> LibrarySnapshot {
         let (onDisk, urls) = Self.listAudioFiles(under: root)
         let known = tracks.mapValues { LibraryDatabase.Stamp(size: $0.fileSize, modified: $0.modified.timeIntervalSince1970) }
         let diff = ScanDiff.compute(onDisk: onDisk, inDatabase: known)
@@ -95,7 +94,7 @@ actor LibraryCatalog {
         }
         guard !diff.toRead.isEmpty else { return grouped() }
 
-        await progress(Progress(done: 0, total: diff.toRead.count, albums: diff.removed.isEmpty ? nil : grouped()))
+        await progress(Progress(done: 0, total: diff.toRead.count, snapshot: diff.removed.isEmpty ? nil : grouped()))
         var pending = diff.toRead.makeIterator()
         var batch: [Track] = []
         var done = 0
@@ -116,7 +115,7 @@ actor LibraryCatalog {
                 if Date().timeIntervalSince(lastPublish) >= Self.publishInterval {
                     commit(&batch)
                     lastPublish = Date()
-                    await progress(Progress(done: done, total: diff.toRead.count, albums: grouped()))
+                    await progress(Progress(done: done, total: diff.toRead.count, snapshot: grouped()))
                 }
             }
         }
@@ -135,9 +134,11 @@ actor LibraryCatalog {
         batch.removeAll(keepingCapacity: true)
     }
 
-    private func grouped() -> [Album] {
+    private func grouped() -> LibrarySnapshot {
         let edited = tracks.values.map { trackOverrides[$0.id]?.apply(to: $0) ?? $0 }
-        return AlbumOverrides.apply(overrides, to: LibraryGrouping.albums(from: edited))
+        var snapshot = LibraryGrouping.snapshot(from: edited)
+        snapshot.albums = AlbumOverrides.apply(overrides, to: snapshot.albums)
+        return snapshot
     }
 
     // MARK: - Playlists
@@ -160,7 +161,7 @@ actor LibraryCatalog {
     }
 
     /// Saves an album edit and returns the albums with it applied.
-    func setOverride(_ override: AlbumOverride) -> [Album] {
+    func setOverride(_ override: AlbumOverride) -> LibrarySnapshot {
         try? database?.setOverride(override)
         overrides[override.albumKey] = override.isEmpty ? nil : override
         return grouped()
@@ -170,7 +171,7 @@ actor LibraryCatalog {
         trackOverrides[id] ?? TrackOverride(trackID: id)
     }
 
-    func saveTrackOverride(_ override: TrackOverride) throws -> [Album] {
+    func saveTrackOverride(_ override: TrackOverride) throws -> LibrarySnapshot {
         guard let database else { throw LibraryDatabase.DatabaseError.sqlite("Library database unavailable") }
         guard tracks[override.trackID] != nil else { return grouped() }
         try database.saveTrackOverrides([override])
@@ -178,11 +179,11 @@ actor LibraryCatalog {
         return grouped()
     }
 
-    func moveTracks(_ ids: [String], to existingAlbumID: String?, newAlbum: (title: String, artist: String)?) throws -> [Album] {
+    func moveTracks(_ ids: [String], to existingAlbumID: String?, newAlbum: (title: String, artist: String)?) throws -> LibrarySnapshot {
         guard let database else { throw LibraryDatabase.DatabaseError.sqlite("Library database unavailable") }
         let selected = Set(ids).filter { tracks[$0] != nil }
         guard !selected.isEmpty else { return grouped() }
-        let target = existingAlbumID.flatMap { id in grouped().first { $0.id == id } }
+        let target = existingAlbumID.flatMap { id in grouped().albums.first { $0.id == id } }
         guard target != nil || newAlbum != nil else {
             throw LibraryDatabase.DatabaseError.sqlite("Target album no longer exists")
         }
@@ -201,7 +202,7 @@ actor LibraryCatalog {
         return grouped()
     }
 
-    func restoreFileAlbum(for ids: [String]) throws -> [Album] {
+    func restoreFileAlbum(for ids: [String]) throws -> LibrarySnapshot {
         guard let database else { throw LibraryDatabase.DatabaseError.sqlite("Library database unavailable") }
         let changes = Set(ids).filter { tracks[$0] != nil }.sorted().map { id -> TrackOverride in
             var edit = trackOverride(for: id)
@@ -241,7 +242,12 @@ actor LibraryCatalog {
         if (try? database.trackCount()) == 0,
            let data = try? Data(contentsOf: url),
            let index = try? JSONDecoder().decode(LegacyIndex.self, from: data), index.version == 2 {
-            try? database.upsert(index.tracks)
+            let toRescan = index.tracks.map { track -> Track in
+                var track = track
+                track.modified = .distantPast
+                return track
+            }
+            try? database.upsert(toRescan)
         }
         try? FileManager.default.removeItem(at: url)
     }

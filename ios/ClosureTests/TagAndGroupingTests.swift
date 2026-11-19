@@ -66,7 +66,7 @@ final class LibraryGroupingTests: XCTestCase {
         XCTAssertEqual(albums[0].discs, [1, 2])
     }
 
-    func testDiscFoldersWithoutTagsStillFormOneAlbum() {
+    func testDiscFoldersWithoutAlbumArtistStillFormOneAlbum() {
         let albums = LibraryGrouping.albums(from: [
             track("Box/CD1/01.flac", album: "Box", disc: 1),
             track("Box/CD2/01.flac", album: "Box", disc: 2),
@@ -82,12 +82,47 @@ final class LibraryGroupingTests: XCTestCase {
         XCTAssertEqual(albums.count, 1)
         XCTAssertEqual(albums[0].artist, "Various Artists")
 
-        let untagged = LibraryGrouping.albums(from: [
-            track("Mix/01.flac", album: "Mix", artist: "X", track: 1),
-            track("Mix/02.flac", album: "Mix", artist: "Y", track: 2),
+        let compilation = LibraryGrouping.albums(from: [
+            track("Mix/01.flac", album: "Mix", artist: "X", track: 1, compilation: true),
+            track("Mix/02.flac", album: "Mix", artist: "Y", track: 2, compilation: true),
         ])
-        XCTAssertEqual(untagged.count, 1, "same folder and album title without an album artist tag")
-        XCTAssertEqual(untagged[0].artist, "Various Artists")
+        XCTAssertEqual(compilation.count, 1)
+        XCTAssertEqual(compilation[0].artist, "Various Artists")
+    }
+
+    func testFolderDoesNotSupplyAlbumNameOrMembership() {
+        let tracks = [track("Downloads/first.flac", album: "", artist: "X"),
+                      track("Downloads/second.flac", album: "", artist: "Y")]
+        let snapshot = LibraryGrouping.snapshot(from: tracks)
+        XCTAssertTrue(snapshot.albums.isEmpty)
+        XCTAssertEqual(Set(snapshot.unassignedTracks.map(\.id)), Set(tracks.map(\.id)))
+    }
+
+    func testOneTaggedTrackIsAnAlbum() {
+        let snapshot = LibraryGrouping.snapshot(from: [track("Imports/song.flac", album: "Release")])
+        XCTAssertEqual(snapshot.albums.map(\.title), ["Release"])
+        XCTAssertTrue(snapshot.unassignedTracks.isEmpty)
+    }
+
+    func testTaggedAlbumsIgnoreFolderAndSeparateArtists() {
+        let tracks = [track("Mixed/one.flac", album: "Release", artist: "A"),
+                      track("Other/two.flac", album: "Release", artist: "A"),
+                      track("Mixed/three.flac", album: "Release", artist: "B")]
+        let albums = LibraryGrouping.albums(from: tracks)
+        XCTAssertEqual(albums.count, 2)
+        XCTAssertEqual(Set(albums.first { $0.artist == "A" }?.tracks.map(\.id) ?? []),
+                       ["Mixed/one.flac", "Other/two.flac"])
+        XCTAssertEqual(albums.first { $0.artist == "B" }?.tracks.map(\.id), ["Mixed/three.flac"])
+    }
+
+    func testUserCanAssignUntaggedTrackToAlbum() {
+        var untagged = track("Mixed/loose.flac", album: "")
+        let tagged = track("Other/release.flac", album: "Release")
+        untagged.groupingKeyOverride = tagged.albumKey
+        let snapshot = LibraryGrouping.snapshot(from: [untagged, tagged])
+        XCTAssertTrue(snapshot.unassignedTracks.isEmpty)
+        XCTAssertEqual(snapshot.albums.count, 1)
+        XCTAssertEqual(Set(snapshot.albums[0].tracks.map(\.id)), [untagged.id, tagged.id])
     }
 
     func testSameTitleByDifferentArtistsStaysApart() {

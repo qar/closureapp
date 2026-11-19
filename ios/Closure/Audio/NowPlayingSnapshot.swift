@@ -13,13 +13,13 @@ struct NowPlayingSnapshot {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artist.isEmpty ? "Unknown Artist" : track.artist,
-            MPMediaItemPropertyAlbumTitle: track.album.isEmpty ? "Unknown Album" : track.album,
             MPMediaItemPropertyPlaybackDuration: total,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
             MPNowPlayingInfoPropertyPlaybackQueueIndex: queueIndex,
             MPNowPlayingInfoPropertyPlaybackQueueCount: queueCount,
         ]
+        if !track.album.isEmpty { info[MPMediaItemPropertyAlbumTitle] = track.album }
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
         return NowPlayingSnapshot(info: info, playbackState: isPlaying ? .playing : .paused)
     }

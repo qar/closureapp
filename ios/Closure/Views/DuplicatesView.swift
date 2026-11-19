@@ -59,7 +59,7 @@ struct DuplicatesView: View {
     }
 
     private func groupView(_ group: [String]) -> some View {
-        let track = library.albums.lazy.flatMap(\.tracks).first { group.contains($0.id) }
+        let track = group.compactMap { library.tracksByID[$0] }.first
         let kept = kept(in: group)
         return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {

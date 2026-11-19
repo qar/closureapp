@@ -42,18 +42,8 @@ struct Track: Identifiable, Hashable, Codable {
     /// Folder of the file, relative to the library root.
     var folder: String { id.split(separator: "/").dropLast().joined(separator: "/") }
 
-    /// The folder that holds the album: "Box Set/CD2" counts as "Box Set".
-    var albumFolder: String {
-        let parts = id.split(separator: "/").dropLast()
-        if let last = parts.last, LibraryGrouping.discNumber(fromFolderName: String(last)) != nil {
-            return parts.dropLast().joined(separator: "/")
-        }
-        return parts.joined(separator: "/")
-    }
-
-    /// Tracks with the same key form one album. With an album artist tag the key is
-    /// "album artist + album", so discs in separate folders and compilations stay
-    /// together. Without it, the key is "album folder + album".
+    /// Tracks with the same key form one album. File location does not determine
+    /// album membership; a user assignment takes precedence over the tags.
     var albumKey: String { originalAlbumKey ?? groupingKeyOverride ?? tagAlbumKey }
 
     private var tagAlbumKey: String {
@@ -61,7 +51,8 @@ struct Track: Identifiable, Hashable, Codable {
         if let albumArtist = albumArtist?.trimmingCharacters(in: .whitespaces), !albumArtist.isEmpty {
             return "artist\u{1F}\(albumArtist.lowercased())\u{1F}\(albumName)"
         }
-        return "folder\u{1F}\(albumFolder)\u{1F}\(albumName)"
+        if isCompilation == true { return "compilation\u{1F}\(albumName)" }
+        return "trackArtist\u{1F}\(artist.trimmingCharacters(in: .whitespaces).lowercased())\u{1F}\(albumName)"
     }
 
     var formatSummary: String {
@@ -121,6 +112,11 @@ struct Album: Identifiable, Hashable {
                              sampleTracks: tracks.prefix(2).map(\.url),
                              stamp: tracks.first?.modified.timeIntervalSince1970 ?? 0, override: artworkOverride)
     }
+}
+
+struct LibrarySnapshot {
+    var albums: [Album]
+    var unassignedTracks: [Track]
 }
 
 /// Shown once after an import that changed something.
@@ -289,14 +285,28 @@ enum TagTextRepair {
 // MARK: - Grouping
 
 enum LibraryGrouping {
+    static func snapshot(from tracks: [Track]) -> LibrarySnapshot {
+        let unassigned = tracks.filter {
+            $0.groupingKeyOverride == nil && $0.album.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.sorted {
+            let order = $0.title.localizedStandardCompare($1.title)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
+        return LibrarySnapshot(albums: albums(from: tracks), unassignedTracks: unassigned)
+    }
+
     /// Groups tracks into albums and sorts them by artist, then title.
     static func albums(from tracks: [Track]) -> [Album] {
-        Dictionary(grouping: tracks, by: \.albumKey)
+        let assigned = tracks.filter {
+            $0.groupingKeyOverride != nil || !$0.album.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return Dictionary(grouping: assigned, by: \.albumKey)
             .map { key, tracks in
                 let sorted = tracks.sorted(by: trackOrder)
                 let native = sorted.filter { $0.groupingKeyOverride == nil }
                 let representative = native.first ?? sorted.first
-                let title = representative?.album ?? "Unknown Album"
+                let name = representative?.album.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let title = name.isEmpty ? "Unknown Album" : name
                 let displayed = sorted.map { track -> Track in
                     var track = track
                     if track.groupingKeyOverride != nil { track.album = title }

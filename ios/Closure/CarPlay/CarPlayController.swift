@@ -23,10 +23,12 @@ final class CarPlayController: NSObject, @preconcurrency CPNowPlayingTemplateObs
     private weak var player: PlayerModel?
     private weak var interfaceController: CPInterfaceController?
     private var albumsTemplate: CPListTemplate?
+    private var tracksTemplate: CPListTemplate?
     private var playlistsTemplate: CPListTemplate?
     private var detailRenderers: [ObjectIdentifier: () -> Void] = [:]
     private var detailPages: [ObjectIdentifier: Int] = [:]
     private var albumsPage = 0
+    private var tracksPage = 0
     private var playlistsPage = 0
 
     func bind(library: LibraryStore, player: PlayerModel) {
@@ -43,6 +45,12 @@ final class CarPlayController: NSObject, @preconcurrency CPNowPlayingTemplateObs
         addNowPlayingButton(to: albums)
         albumsTemplate = albums
 
+        let tracks = CPListTemplate(title: "Tracks", sections: [])
+        tracks.tabTitle = "Tracks"
+        tracks.tabImage = UIImage(systemName: "music.note")
+        addNowPlayingButton(to: tracks)
+        tracksTemplate = tracks
+
         let playlists = CPListTemplate(title: "Playlists", sections: [])
         playlists.tabTitle = "Playlists"
         playlists.tabImage = UIImage(systemName: "music.note.list")
@@ -55,7 +63,7 @@ final class CarPlayController: NSObject, @preconcurrency CPNowPlayingTemplateObs
         nowPlaying.add(self)
 
         refresh()
-        controller.setRootTemplate(CPTabBarTemplate(templates: [albums, playlists]), animated: false) { success, error in
+        controller.setRootTemplate(CPTabBarTemplate(templates: [albums, tracks, playlists]), animated: false) { success, error in
             if !success { NSLog("[Closure] CarPlay root template failed: %@", error?.localizedDescription ?? "unknown error") }
         }
         if let library {
@@ -71,6 +79,7 @@ final class CarPlayController: NSObject, @preconcurrency CPNowPlayingTemplateObs
         CPNowPlayingTemplate.shared.remove(self)
         interfaceController = nil
         albumsTemplate = nil
+        tracksTemplate = nil
         playlistsTemplate = nil
         detailRenderers.removeAll()
         detailPages.removeAll()
@@ -79,6 +88,7 @@ final class CarPlayController: NSObject, @preconcurrency CPNowPlayingTemplateObs
     func refresh() {
         guard let interfaceController else { return }
         renderAlbums()
+        renderTracks()
         renderPlaylists()
         let active = Set(interfaceController.templates.map { ObjectIdentifier($0) })
         detailRenderers = detailRenderers.filter { active.contains($0.key) }
@@ -125,6 +135,26 @@ final class CarPlayController: NSObject, @preconcurrency CPNowPlayingTemplateObs
         } onPage: { [weak self] page in
             self?.playlistsPage = page
             self?.renderPlaylists()
+        }
+    }
+
+    private func renderTracks() {
+        guard let template = tracksTemplate, let library else { return }
+        tracksPage = update(template, items: library.allTracks, page: tracksPage,
+                            emptyText: library.isLoaded ? "No tracks" : "Loading library") { [weak self] track, _ in
+            let item = CPListItem(text: track.title, detailText: track.artist)
+            item.isPlaying = self?.player?.currentTrack?.id == track.id && self?.player?.isPlaying == true
+            item.handler = { [weak self] _, done in
+                defer { done() }
+                guard let self, let player = self.player, let library = self.library,
+                      let index = library.allTracks.firstIndex(where: { $0.id == track.id }) else { return }
+                player.play(library.allTracks, from: index, context: "Tracks")
+                self.showNowPlaying()
+            }
+            return item
+        } onPage: { [weak self] page in
+            self?.tracksPage = page
+            self?.renderTracks()
         }
     }
 
