@@ -38,8 +38,12 @@ struct FileImporter {
         var companionFiles = 0
         /// Files that could not be transferred. In move mode they are still in the inbox.
         var failed: [String] = []
-        /// Files left in the inbox because Closure does not handle them.
+        /// Unsupported files left at their source, whether copied from Files or moved from Finder.
         var leftInPlace: [String] = []
+        /// Companion files selected without a folder containing audio.
+        var looseCompanions: [String] = []
+        /// Folders skipped because they contain no supported audio.
+        var foldersWithoutAudio: [String] = []
         /// Bytes missing when an import did not start for lack of space.
         var spaceShortfall: Int64?
         /// Audio files skipped because the library already has the same content.
@@ -50,6 +54,8 @@ struct FileImporter {
             companionFiles += other.companionFiles
             failed += other.failed
             leftInPlace += other.leftInPlace
+            looseCompanions += other.looseCompanions
+            foldersWithoutAudio += other.foldersWithoutAudio
             duplicates += other.duplicates
             if let shortfall = other.spaceShortfall { spaceShortfall = (spaceShortfall ?? 0) + shortfall }
         }
@@ -108,7 +114,7 @@ struct FileImporter {
         defer { for (url, didStart) in scoped where didStart { url.stopAccessingSecurityScopedResource() } }
 
         let needed = sources.reduce(Int64(0)) { $0 + transferableBytes(in: $1) }
-        if let free = availableSpace(), needed + Self.spaceReserve > free {
+        if needed > 0, let free = availableSpace(), needed + Self.spaceReserve > free {
             var report = Report()
             report.spaceShortfall = needed + Self.spaceReserve - free
             return report
@@ -168,7 +174,7 @@ struct FileImporter {
 
         // A folder of photos or documents is not music. Leave it untouched.
         guard files.contains(where: { Self.kind(of: $0) == .audio }) else {
-            if mode == .move { report.leftInPlace.append(folder.lastPathComponent) }
+            report.foldersWithoutAudio.append(folder.lastPathComponent)
             return report
         }
 
@@ -178,6 +184,8 @@ struct FileImporter {
         let duplicateAudio = Set(audio.filter { isInLibrary($0) })
         if !audio.isEmpty, duplicateAudio.count == audio.count {
             report.duplicates = audio.map { folder.lastPathComponent + "/" + relativePath(of: $0, in: folder) }
+            report.leftInPlace = files.filter { Self.kind(of: $0) == .other }
+                .map { folder.lastPathComponent + "/" + relativePath(of: $0, in: folder) }
             if mode == .move {
                 for file in files where Self.kind(of: file) != .other { try? fileManager.removeItem(at: file) }
                 removeEmptyDirectories(in: folder)
@@ -206,7 +214,7 @@ struct FileImporter {
             case .junk:
                 skipped.append(file)
             case .other:
-                if mode == .move { report.leftInPlace.append(relativePath(of: file, in: folder.deletingLastPathComponent())) }
+                report.leftInPlace.append(relativePath(of: file, in: folder.deletingLastPathComponent()))
             }
         }
 
@@ -237,9 +245,10 @@ struct FileImporter {
             }
         case .junk:
             if mode == .move { try? fileManager.removeItem(at: file) }
-        case .companion, .other:
-            // A cover or lyrics file on its own has no album to attach to.
-            if mode == .move { report.leftInPlace.append(file.lastPathComponent) }
+        case .companion:
+            report.looseCompanions.append(file.lastPathComponent)
+        case .other:
+            report.leftInPlace.append(file.lastPathComponent)
         }
         return report
     }
@@ -457,6 +466,7 @@ struct FileImporter {
     /// Bytes of audio and companion files that an import of `source` would copy.
     private func transferableBytes(in source: URL) -> Int64 {
         let files = isDirectory(source) ? regularFiles(in: source) : [source]
+        guard files.contains(where: { Self.kind(of: $0) == .audio }) else { return 0 }
         return files.reduce(Int64(0)) { total, file in
             let kind = Self.kind(of: file)
             guard kind == .audio || kind == .companion else { return total }
