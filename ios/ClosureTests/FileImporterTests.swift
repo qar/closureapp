@@ -104,7 +104,7 @@ final class FileImporterTests: XCTestCase {
         let report = importer.importInbox(inbox)
 
         XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
-        XCTAssertEqual(report.leftInPlace, ["Photos"])
+        XCTAssertEqual(report.foldersWithoutAudio, ["Photos"])
         XCTAssertTrue(exists("Photos/a.jpg", in: inbox))
         XCTAssertTrue(exists("Photos/notes.txt", in: inbox))
         XCTAssertFalse(exists("Photos", in: library))
@@ -144,7 +144,7 @@ final class FileImporterTests: XCTestCase {
 
         let report = importer.importInbox(inbox)
 
-        XCTAssertEqual(report.leftInPlace, ["cover.jpg"])
+        XCTAssertEqual(report.looseCompanions, ["cover.jpg"])
         XCTAssertTrue(exists("cover.jpg", in: inbox))
     }
 
@@ -173,7 +173,7 @@ final class FileImporterTests: XCTestCase {
 
         XCTAssertEqual(report.audioFiles, 1)
         XCTAssertEqual(report.companionFiles, 1)
-        XCTAssertEqual(report.leftInPlace, [], "copy mode reports nothing as left behind")
+        XCTAssertEqual(report.leftInPlace, ["Live/video.mkv"], "unsupported files are reported for Files imports")
         XCTAssertTrue(exists("Live/01.flac", in: library))
         XCTAssertTrue(exists("Live/cover.png", in: library))
         XCTAssertFalse(exists("Live/.DS_Store", in: library))
@@ -188,6 +188,27 @@ final class FileImporterTests: XCTestCase {
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/b.lrc")), .companion)
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/._b.flac")), .junk)
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/b.zip")), .other)
+    }
+
+    func testCopyReportsFolderWithoutAudioAndLooseUnsupportedFile() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Photos/cover.jpg", in: source)
+        try makeFile("archive.zip", in: source)
+        try makeFile("cover.jpg", in: source)
+
+        let importer = FileImporter(libraryRoot: library, availableSpace: { 0 })
+        let report = importer.importCopies([source.appendingPathComponent("Photos"),
+                                            source.appendingPathComponent("archive.zip"),
+                                            source.appendingPathComponent("cover.jpg")])
+
+        XCTAssertNil(report.spaceShortfall, "nothing will be copied, so free space is irrelevant")
+        XCTAssertEqual(report.foldersWithoutAudio, ["Photos"])
+        XCTAssertEqual(report.leftInPlace, ["archive.zip"])
+        XCTAssertEqual(report.looseCompanions, ["cover.jpg"])
+        XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
+        XCTAssertTrue(exists("Photos/cover.jpg", in: source))
+        XCTAssertTrue(exists("archive.zip", in: source))
+        XCTAssertTrue(exists("cover.jpg", in: source))
     }
 
     // MARK: - Staged, verified copies
