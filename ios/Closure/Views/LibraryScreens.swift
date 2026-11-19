@@ -146,14 +146,22 @@ struct ImportResultView: View {
             if report.spaceShortfall == nil {
                 Hairline()
                 row("Tracks", report.audioFiles)
-                row("Covers & lyrics", report.companionFiles)
+                row("Companion files", report.companionFiles)
                 if !report.duplicates.isEmpty {
                     row("Already in library", report.duplicates.count,
                         note: names(report.duplicates, reason: "same content as a file in the library; no new copy was added"))
                 }
-                if summary.source == "Finder" {
-                    row("Left in Documents", report.leftInPlace.count,
-                        note: names(report.leftInPlace, reason: "not a music file"))
+                if !report.leftInPlace.isEmpty {
+                    row(summary.source == "Finder" ? "Left in Documents" : "Skipped files", report.leftInPlace.count,
+                        note: names(report.leftInPlace, reason: "unsupported file type; the original remains where it was"))
+                }
+                if !report.looseCompanions.isEmpty {
+                    row("Unattached companion files", report.looseCompanions.count,
+                        note: names(report.looseCompanions, reason: "select with a folder containing audio; the original remains where it was"))
+                }
+                if !report.foldersWithoutAudio.isEmpty {
+                    row("Skipped folders", report.foldersWithoutAudio.count,
+                        note: names(report.foldersWithoutAudio, reason: "no supported audio files; the folder remains where it was"))
                 }
                 row("Failed", report.failed.count, note: names(report.failed, reason: summary.source == "Finder" ? "left where it was" : "could not be copied intact; the original is unchanged"))
             }

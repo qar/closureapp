@@ -69,11 +69,13 @@ final class DuplicateTests: XCTestCase {
         try write("Album/01.flac", in: source, seed: 1)
         try write("Album/02.flac", in: source, seed: 2)
         try write("Album/cover.jpg", in: source, seed: 3, bytes: 100)
+        try write("Album/extras.zip", in: source, seed: 4, bytes: 100)
 
         let report = importer().0.importCopies([source.appendingPathComponent("Album")])
 
         XCTAssertEqual(report.duplicates.sorted(), ["Album/01.flac", "Album/02.flac"])
         XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
+        XCTAssertEqual(report.leftInPlace, ["Album/extras.zip"])
         XCTAssertFalse(exists("Album/cover 2.jpg"))
         XCTAssertTrue(fileManager.fileExists(atPath: source.appendingPathComponent("Album/01.flac").path), "a copy import never touches the source")
     }
