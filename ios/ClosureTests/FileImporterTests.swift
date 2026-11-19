@@ -104,7 +104,7 @@ final class FileImporterTests: XCTestCase {
         let report = importer.importInbox(inbox)
 
         XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
-        XCTAssertEqual(report.leftInPlace, ["Photos"])
+        XCTAssertEqual(report.foldersWithoutAudio, ["Photos"])
         XCTAssertTrue(exists("Photos/a.jpg", in: inbox))
         XCTAssertTrue(exists("Photos/notes.txt", in: inbox))
         XCTAssertFalse(exists("Photos", in: library))
@@ -144,7 +144,7 @@ final class FileImporterTests: XCTestCase {
 
         let report = importer.importInbox(inbox)
 
-        XCTAssertEqual(report.leftInPlace, ["cover.jpg"])
+        XCTAssertEqual(report.looseCompanions, ["cover.jpg"])
         XCTAssertTrue(exists("cover.jpg", in: inbox))
     }
 
@@ -173,7 +173,7 @@ final class FileImporterTests: XCTestCase {
 
         XCTAssertEqual(report.audioFiles, 1)
         XCTAssertEqual(report.companionFiles, 1)
-        XCTAssertEqual(report.leftInPlace, [], "copy mode reports nothing as left behind")
+        XCTAssertEqual(report.leftInPlace, ["Live/video.mkv"], "unsupported files are reported for Files imports")
         XCTAssertTrue(exists("Live/01.flac", in: library))
         XCTAssertTrue(exists("Live/cover.png", in: library))
         XCTAssertFalse(exists("Live/.DS_Store", in: library))
@@ -188,5 +188,210 @@ final class FileImporterTests: XCTestCase {
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/b.lrc")), .companion)
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/._b.flac")), .junk)
         XCTAssertEqual(FileImporter.kind(of: URL(fileURLWithPath: "/a/b.zip")), .other)
+    }
+
+    func testCopyReportsFolderWithoutAudioAndLooseUnsupportedFile() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Photos/cover.jpg", in: source)
+        try makeFile("archive.zip", in: source)
+        try makeFile("cover.jpg", in: source)
+
+        let importer = FileImporter(libraryRoot: library, availableSpace: { 0 })
+        let report = importer.importCopies([source.appendingPathComponent("Photos"),
+                                            source.appendingPathComponent("archive.zip"),
+                                            source.appendingPathComponent("cover.jpg")])
+
+        XCTAssertNil(report.spaceShortfall, "nothing will be copied, so free space is irrelevant")
+        XCTAssertEqual(report.foldersWithoutAudio, ["Photos"])
+        XCTAssertEqual(report.leftInPlace, ["archive.zip"])
+        XCTAssertEqual(report.looseCompanions, ["cover.jpg"])
+        XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
+        XCTAssertTrue(exists("Photos/cover.jpg", in: source))
+        XCTAssertTrue(exists("archive.zip", in: source))
+        XCTAssertTrue(exists("cover.jpg", in: source))
+    }
+
+    // MARK: - Staged, verified copies
+
+    private var staging: URL { root.appendingPathComponent("Staging") }
+
+    private func stagingIsEmpty() -> Bool {
+        ((try? fileManager.contentsOfDirectory(atPath: staging.path)) ?? []).isEmpty
+    }
+
+    func testCopyIsVerifiedThroughStagingAndLeavesNoTrace() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Album/01.flac", in: source, bytes: 300_000)
+        try makeFile("Album/cover.jpg", in: source)
+
+        let report = importer.importItem(source.appendingPathComponent("Album"), mode: .copy)
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.companionFiles, 1)
+        XCTAssertEqual(try Data(contentsOf: library.appendingPathComponent("Album/01.flac")),
+                       try Data(contentsOf: source.appendingPathComponent("Album/01.flac")))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testCorruptedCopyNeverReachesTheLibrary() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Album/01.flac", in: source)
+        try makeFile("Album/02.flac", in: source)
+        var importer = FileImporter(libraryRoot: library)
+        importer.afterStaging = { staged in
+            if staged.lastPathComponent == "02.flac" { try? Data([0, 0, 0]).write(to: staged) } // simulate a bad write
+        }
+
+        let report = importer.importItem(source.appendingPathComponent("Album"), mode: .copy)
+
+        XCTAssertEqual(report.audioFiles, 0)
+        XCTAssertEqual(report.failed, ["Album/01.flac", "Album/02.flac"])
+        XCTAssertFalse(exists("Album/01.flac", in: library))
+        XCTAssertFalse(exists("Album/02.flac", in: library))
+        XCTAssertTrue(exists("Album/01.flac", in: source))
+        XCTAssertTrue(exists("Album/02.flac", in: source), "the source is never touched")
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testFailedInboxVerificationKeepsTheWholeAlbum() throws {
+        try makeFile("Album/01.flac", in: inbox)
+        try makeFile("Album/02.flac", in: inbox)
+        try makeFile("Album/cover.jpg", in: inbox)
+        var importer = FileImporter(libraryRoot: library)
+        importer.afterStaging = { staged in
+            if staged.lastPathComponent == "02.flac" { try? Data([0]).write(to: staged) }
+        }
+
+        let report = importer.importInbox(inbox)
+
+        XCTAssertEqual(report.audioFiles + report.companionFiles, 0)
+        XCTAssertEqual(Set(report.failed), ["Album/01.flac", "Album/02.flac", "Album/cover.jpg"])
+        for path in ["Album/01.flac", "Album/02.flac", "Album/cover.jpg"] {
+            XCTAssertTrue(exists(path, in: inbox))
+            XCTAssertFalse(exists(path, in: library))
+        }
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testFailedMergeRollsBackAndKeepsInboxSources() throws {
+        try makeFile("Album/existing.flac", in: library, bytes: 12)
+        try makeFile("Album/01.flac", in: inbox)
+        try makeFile("Album/02.flac", in: inbox)
+        var importer = FileImporter(libraryRoot: library)
+        importer.beforeCommitMove = { _, destination in
+            if destination.lastPathComponent == "02.flac" { throw CocoaError(.fileWriteUnknown) }
+        }
+
+        let report = importer.importInbox(inbox)
+
+        XCTAssertEqual(report.audioFiles, 0)
+        XCTAssertEqual(report.failed, ["Album/01.flac", "Album/02.flac"])
+        XCTAssertTrue(exists("Album/existing.flac", in: library))
+        XCTAssertFalse(exists("Album/01.flac", in: library))
+        XCTAssertFalse(exists("Album/02.flac", in: library))
+        XCTAssertTrue(exists("Album/01.flac", in: inbox))
+        XCTAssertTrue(exists("Album/02.flac", in: inbox))
+
+        let recovered = FileImporter(libraryRoot: library).recoverStaging()
+        XCTAssertEqual(recovered.audioFiles, 2)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testPartiallyCommittedMergeFinishesAtRecordedDestinations() throws {
+        try makeFile("Album/01.flac", in: library, bytes: 10)
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch, bytes: 20)
+        try makeFile("Album/02.flac", in: batch)
+        try JSONSerialization.data(withJSONObject: [
+            "files": ["Album/01.flac", "Album/02.flac"],
+            "destinations": ["Album/01.flac": "Album/01 2.flac", "Album/02.flac": "Album/02.flac"]
+        ]).write(to: batch.appendingPathComponent("manifest.json"))
+        try fileManager.moveItem(at: batch.appendingPathComponent("Album/01.flac"),
+                                 to: library.appendingPathComponent("Album/01 2.flac"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 2)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/01 2.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testAtomicAlbumMoveFinishesAfterRestart() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+        try makeFile("Album/cover.jpg", in: batch)
+        try JSONSerialization.data(withJSONObject: [
+            "files": ["Album/01.flac", "Album/cover.jpg"], "atomicRoot": "Album"
+        ]).write(to: batch.appendingPathComponent("manifest.json"))
+        try fileManager.moveItem(at: batch.appendingPathComponent("Album"),
+                                 to: library.appendingPathComponent("Album"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.companionFiles, 1)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/cover.jpg", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testNotEnoughSpaceCopiesNothing() throws {
+        let source = root.appendingPathComponent("External")
+        try makeFile("Album/01.flac", in: source, bytes: 5_000)
+        let importer = FileImporter(libraryRoot: library, availableSpace: { FileImporter.spaceReserve + 1_000 })
+
+        let report = importer.importCopies([source.appendingPathComponent("Album")])
+
+        XCTAssertEqual(report.spaceShortfall, 4_000)
+        XCTAssertEqual(report.audioFiles, 0)
+        XCTAssertFalse(exists("Album", in: library))
+    }
+
+    func testVerifiedStagingFinishesOnNextLaunch() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+        try makeFile("Album/cover.jpg", in: batch)
+        try JSONSerialization.data(withJSONObject: ["files": ["Album/01.flac", "Album/cover.jpg"]])
+            .write(to: batch.appendingPathComponent("manifest.json"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertEqual(report.companionFiles, 1)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testLegacyManifestFinishesAfterOneFileWasMoved() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+        try makeFile("Album/02.flac", in: batch)
+        try JSONSerialization.data(withJSONObject: ["files": ["Album/01.flac", "Album/02.flac"]])
+            .write(to: batch.appendingPathComponent("manifest.json"))
+        try fileManager.createDirectory(at: library.appendingPathComponent("Album"), withIntermediateDirectories: true)
+        try fileManager.moveItem(at: batch.appendingPathComponent("Album/01.flac"),
+                                 to: library.appendingPathComponent("Album/01.flac"))
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report.audioFiles, 1)
+        XCTAssertTrue(exists("Album/01.flac", in: library))
+        XCTAssertTrue(exists("Album/02.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
+    }
+
+    func testUnverifiedStagingIsDiscarded() throws {
+        let batch = staging.appendingPathComponent(UUID().uuidString)
+        try makeFile("Album/01.flac", in: batch)
+
+        let report = importer.recoverStaging()
+
+        XCTAssertEqual(report, FileImporter.Report())
+        XCTAssertFalse(exists("Album/01.flac", in: library))
+        XCTAssertTrue(stagingIsEmpty())
     }
 }

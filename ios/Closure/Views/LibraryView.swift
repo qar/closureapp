@@ -1,133 +1,547 @@
+import AuthenticationServices
 import SwiftUI
 import UniformTypeIdentifiers
+
+enum LibraryRoute: Hashable {
+    case album(String)
+    case artist(String)
+    case folder(String)
+    case recentlyDeleted
+    case duplicates
+    case info
+    case fileProblems
+    case playlist(String)
+    case folders
+}
+
+enum LibraryTab: String, CaseIterable, Identifiable {
+    case albums = "Albums"
+    case tracks = "Tracks"
+    case artists = "Artists"
+    case playlists = "Playlists"
+    var id: String { rawValue }
+}
 
 struct LibraryView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(PlayerModel.self) private var player
+    @State private var tab: LibraryTab = .albums
+    @State private var path = NavigationPath()
     @State private var showingImporter = false
     @State private var showingNowPlaying = false
+    @State private var showingSearch = false
+    @State private var showingFinderHelp = false
+    @State private var showingDrive = false
+    @State private var showingDownloads = false
+    @State private var namingPlaylist = false
+    @State private var newPlaylistName = ""
+    @State private var downloadsAfterDrive = false
+    @State private var editingTrack: Track?
+    @State private var movingTrack: Track?
+    @State private var pendingDelete: Track?
+    @Environment(DriveDownloadManager.self) private var downloads
+    @Environment(GoogleDriveAccount.self) private var driveAccount
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
+#if DEBUG
+    @State private var debugImportStarted = false
+    @State private var debugPreviewAlbum: Album?
+    @State private var debugAddToPlaylist: [Track]?
+#endif
 
     var body: some View {
-        NavigationStack {
+        @Bindable var library = library
+        NavigationStack(path: $path) {
             Group {
-                if library.albums.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Music", systemImage: "music.note")
-                    } description: {
-                        Text("Tap + to import files or folders, or copy music to Closure in Finder.")
-                    }
+                if !library.isLoaded {
+                    // The database loads in well under a second; show plain paper meanwhile.
+                    Theme.paper
+                } else if library.allTracks.isEmpty {
+                    EmptyLibraryView(isImporting: library.isImporting || library.scanProgress != nil,
+                                     progress: library.scanProgress,
+                                     onImport: { showingImporter = true },
+                                     onGoogleDrive: openGoogleDrive,
+                                     onFinderHelp: { showingFinderHelp = true })
                 } else {
-                    albumList
-                }
-            }
-            .navigationTitle("Library")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if library.isImporting {
-                        ProgressView()
-                    } else {
-                        Button("Import", systemImage: "plus") { showingImporter = true }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            header
+                            tabBar
+                            content
+                        }
+                        .padding(.bottom, 32)
                     }
                 }
             }
-            .fileImporter(isPresented: $showingImporter,
-                          allowedContentTypes: [.audio, .folder],
-                          allowsMultipleSelection: true) { result in
-                if case let .success(urls) = result {
-                    Task { await library.importItems(urls) }
+            .background(Theme.paper.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: LibraryRoute.self) { route in
+                switch route {
+                case let .album(id): AlbumView(albumID: id)
+                case let .artist(name): ArtistView(artist: name)
+                case let .folder(folder): FolderView(folder: folder)
+                case .recentlyDeleted: RecentlyDeletedView()
+                case .duplicates: DuplicatesView()
+                case .info: LibraryInfoView()
+                case .fileProblems: FileProblemsView()
+                case let .playlist(id): PlaylistView(playlistID: id)
+                case .folders: FoldersView()
                 }
             }
-            .safeAreaInset(edge: .bottom) {
-                if player.currentTrack != nil {
-                    NowPlayingBar { showingNowPlaying = true }
+        }
+        .modifier(AddToPlaylistHost())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                if DownloadStrip.isVisible(downloads) {
+                    DownloadStrip { showingDownloads = true }
+                }
+                MiniPlayer { showingNowPlaying = true }
+            }
+        }
+        .fileImporter(isPresented: $showingImporter,
+                      allowedContentTypes: [.audio, .folder],
+                      allowsMultipleSelection: true) { result in
+            if case let .success(urls) = result {
+                Task { await library.importItems(urls) }
+            }
+        }
+        .fullScreenCover(isPresented: $showingNowPlaying) { NowPlayingView() }
+        .sheet(item: $library.importSummary) { summary in
+            ImportResultView(summary: summary)
+        }
+        .sheet(isPresented: $showingSearch) {
+            SearchView { route in
+                showingSearch = false
+                path.append(route)
+            }
+        }
+        .sheet(isPresented: $showingFinderHelp) { FinderHelpView() }
+        .sheet(isPresented: $showingDrive, onDismiss: {
+            if downloadsAfterDrive {
+                downloadsAfterDrive = false
+                showingDownloads = true
+            }
+        }) {
+            DriveBrowserView(onImport: { downloadsAfterDrive = true })
+                .presentationBackground(Theme.paper)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingDownloads) {
+            DownloadsView()
+                .presentationBackground(Theme.paper)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $editingTrack) { track in
+            TrackEditView(track: track).presentationBackground(Theme.paper)
+        }
+        .sheet(item: $movingTrack) { track in
+            AlbumDestinationView(tracks: [track], currentAlbumID: "", onMoved: {})
+                .presentationBackground(Theme.paper)
+        }
+        .onChange(of: library.searchRevision) { _, _ in
+            if tab == .albums, library.albums.isEmpty, !library.allTracks.isEmpty { tab = .tracks }
+        }
+        .confirmationDialog("Delete this track?", isPresented: Binding(get: { pendingDelete != nil },
+                                                                         set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible, presenting: pendingDelete) { track in
+            Button("Delete \u{201C}\(track.title)\u{201D}", role: .destructive) {
+                Task { await library.delete(track) }
+            }
+        } message: { _ in
+            Text("It moves to Recently Deleted. You can restore it for 30 days.")
+        }
+        .alert("Some files need attention", isPresented: Binding(get: { library.fileNotice != nil }, set: { if !$0 { library.fileNotice = nil } }),
+               presenting: library.fileNotice) { _ in
+            Button("Show") { path.append(LibraryRoute.fileProblems) }
+            Button("OK", role: .cancel) {}
+        } message: { notice in
+            Text(Self.noticeText(notice))
+        }
+        .alert("New Playlist", isPresented: $namingPlaylist) {
+            TextField("Name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") {
+                let name = newPlaylistName
+                Task {
+                    let playlist = await library.createPlaylist(named: name)
+                    path.append(LibraryRoute.playlist(playlist.id))
                 }
             }
-            .sheet(isPresented: $showingNowPlaying) {
-                NowPlayingView()
-                    .presentationDragIndicator(.visible)
-            }
+        }
+        .alert("Google Drive", isPresented: Binding(get: { library.driveError != nil }, set: { if !$0 { library.driveError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(library.driveError ?? "")
+        }
 #if DEBUG
-            .task(id: library.albums.count) { runDebugLaunchArguments() }
+        .task(id: library.albums.count) { runDebugLaunchArguments() }
+        .sheet(isPresented: Binding(get: { debugAddToPlaylist != nil }, set: { if !$0 { debugAddToPlaylist = nil } })) {
+            AddToPlaylistView(tracks: debugAddToPlaylist ?? [])
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Theme.paper)
+        }
+        .overlay {
+            // -ClosureScreen albumpreview: the long-press card on a dimmed library.
+            if let album = debugPreviewAlbum {
+                Color.black.opacity(0.2).ignoresSafeArea()
+                AlbumMenuPreview(album: album).clipShape(RoundedRectangle(cornerRadius: 13))
+            }
+        }
 #endif
+    }
+
+    // MARK: - Header and tabs
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text("Library")
+                .font(Theme.serif(46))
+                .foregroundStyle(Theme.ink)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            if library.isImporting {
+                ProgressView().tint(Theme.ink).frame(width: 44, height: 44)
+            }
+            IconButton(systemName: "magnifyingglass", label: "Search") { showingSearch = true }
+            Menu {
+                Button("From Files", systemImage: "folder") { showingImporter = true }
+                Button("From Google Drive", systemImage: "icloud.and.arrow.down") { openGoogleDrive() }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Import")
+            // Same weight and glyph as the "…" on Now Playing and in Google Drive.
+            IconButton(systemName: "ellipsis", size: 20, weight: .semibold, label: "Library Info") { path.append(LibraryRoute.info) }
+        }
+        .padding(.leading, Theme.horizontalMargin)
+        .padding(.trailing, 14)
+        .padding(.top, 8)
+    }
+
+    private var tabBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 22) {
+                ForEach(LibraryTab.allCases) { item in
+                    Button { tab = item } label: {
+                        VStack(alignment: .leading, spacing: 7) {
+                            MetaText(item.rawValue, color: tab == item ? Theme.ink : Theme.muted)
+                            Rectangle()
+                                .fill(tab == item ? Theme.ink : .clear)
+                                .frame(height: 1.5)
+                        }
+                        .fixedSize()
+                        .frame(minHeight: 32, alignment: .bottom)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(tab == item ? .isSelected : [])
+                }
+            }
+            Hairline().padding(.top, 7)
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+        .padding(.top, 6)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch tab {
+        case .albums:
+            countRow(left: "\(library.albums.count) albums", right: scanText ?? "Sort: Artist")
+            AlbumGrid(albums: library.albums)
+        case .tracks:
+            countRow(left: "\(library.allTracks.count) tracks", right: scanText ?? "A–Z")
+            trackRows
+        case .artists:
+            let artists = artistsList
+            countRow(left: "\(artists.count) artists", right: "A–Z")
+            listRows(artists.map { ListRow(title: $0.name, meta: "\($0.albums) album\($0.albums == 1 ? "" : "s") · \($0.tracks) track\($0.tracks == 1 ? "" : "s")", route: .artist($0.name)) })
+        case .playlists:
+            countRow(left: "\(library.playlists.count) playlists", right: "")
+            TextAction(title: "New Playlist", systemImage: "plus") {
+                newPlaylistName = ""
+                namingPlaylist = true
+            }
+            .padding(.horizontal, Theme.horizontalMargin)
+            .padding(.top, -12)
+            .padding(.bottom, 12)
+            listRows(library.playlists.map { playlist in
+                let count = playlist.tracks(in: library.tracksByID).count
+                return ListRow(title: playlist.name, meta: "\(count) track\(count == 1 ? "" : "s")", route: .playlist(playlist.id))
+            })
         }
     }
 
+    private var trackRows: some View {
+        LazyVStack(spacing: 0) {
+            Hairline()
+            ForEach(Array(library.allTracks.enumerated()), id: \.element.id) { index, track in
+                Button { player.play(library.allTracks, from: index, context: "Tracks") } label: {
+                    TrackRow(number: nil, title: track.title,
+                             subtitle: [track.artist, track.album].filter { !$0.isEmpty }.joined(separator: " · "),
+                             duration: track.duration, isCurrent: player.currentTrack?.id == track.id)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    TrackMenuItems(tracks: [track], context: "Tracks")
+                    Divider()
+                    Button("Edit Track…", systemImage: "pencil") { editingTrack = track }
+                    Button("Move to Album…", systemImage: "square.on.square") { movingTrack = track }
+                    Divider()
+                    Button("Delete…", systemImage: "trash", role: .destructive) { pendingDelete = track }
+                }
+                Hairline()
+            }
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+    }
+
+    static func noticeText(_ notice: LibraryStore.FileNotice) -> String {
+        var parts: [String] = []
+        if notice.unreadable > 0 { parts.append("\(notice.unreadable) file\(notice.unreadable == 1 ? "" : "s") can't be read") }
+        if notice.missing > 0 { parts.append("\(notice.missing) file\(notice.missing == 1 ? " is" : "s are") missing") }
+        return parts.joined(separator: " and ") + ". You can see them in Library Info."
+    }
+
+    /// "Reading 120 / 3000" while new files are read.
+    private var scanText: String? {
+        guard let progress = library.scanProgress, progress.total > 0 else { return nil }
+        return "Reading \(progress.done) / \(progress.total)"
+    }
+
+    /// Opens the Drive browser, signing in first when needed. Cancelling is not an error.
+    private func openGoogleDrive() {
+        guard !driveAccount.isSignedIn else {
+            showingDrive = true
+            return
+        }
+        Task {
+            do {
+                try await driveAccount.signIn { url, scheme in
+                    do {
+                        return try await webAuthenticationSession.authenticate(using: url, callbackURLScheme: scheme,
+                                                                               preferredBrowserSession: .shared)
+                    } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+                        throw GoogleDrive.DriveError.cancelled
+                    }
+                }
+                showingDrive = true
+            } catch GoogleDrive.DriveError.cancelled {
+                return
+            } catch {
+                library.driveError = error.localizedDescription
+            }
+        }
+    }
+
+    private func countRow(left: String, right: String) -> some View {
+        HStack {
+            MetaText(left, size: 10)
+            Spacer()
+            MetaText(right, size: 10)
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+        .padding(.top, 16)
+        .padding(.bottom, 20)
+    }
+
+    private struct ListRow: Identifiable {
+        let title: String
+        let meta: String
+        let route: LibraryRoute
+        var id: LibraryRoute { route }
+    }
+
+    private func listRows(_ rows: [ListRow]) -> some View {
+        LazyVStack(spacing: 0) {
+            Hairline()
+            ForEach(rows) { row in
+                NavigationLink(value: row.route) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(row.title)
+                                .font(.system(size: 17))
+                                .foregroundStyle(Theme.ink)
+                                .lineLimit(1)
+                            MetaText(row.meta, size: 9.5, tracking: 1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Hairline()
+            }
+        }
+        .padding(.horizontal, Theme.horizontalMargin)
+    }
+
+    // MARK: - Derived lists
+
+    private var artistsList: [(name: String, albums: Int, tracks: Int)] {
+        var counts: [String: (albums: Int, tracks: Int)] = [:]
+        for album in library.albums {
+            counts[album.artist, default: (0, 0)].albums += 1
+            counts[album.artist, default: (0, 0)].tracks += album.tracks.count
+        }
+        for track in library.unassignedTracks {
+            let artist = track.artist.isEmpty ? "Unknown Artist" : track.artist
+            counts[artist, default: (0, 0)].tracks += 1
+        }
+        return counts.map { ($0.key, $0.value.albums, $0.value.tracks) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
 #if DEBUG
-    /// Simulator checks without taps: -ClosureAutoplay plays the first album,
-    /// -ClosureShowNowPlaying also opens the now playing sheet.
+    /// Simulator checks without taps. -ClosureScreen accepts: album, nowplaying,
+    /// signal, queue, import, artists, folders, search.
     private func runDebugLaunchArguments() {
         let arguments = ProcessInfo.processInfo.arguments
-        guard arguments.contains("-ClosureAutoplay"), player.currentTrack == nil,
-              let album = library.albums.first else { return }
-        player.play(album.tracks, from: 0)
-        showingNowPlaying = arguments.contains("-ClosureShowNowPlaying")
+        if let flag = arguments.firstIndex(of: "-ClosureImportPath"), flag + 1 < arguments.count, !debugImportStarted {
+            debugImportStarted = true
+            let url = URL(fileURLWithPath: arguments[flag + 1])
+            Task { await library.importItems([url]) }
+            return
+        }
+        // -ClosurePlaylistDemo: favorites and one playlist from the first albums, once.
+        if arguments.contains("-ClosurePlaylistDemo"), library.playlists.count == 1, library.albums.count > 2 {
+            let albums = library.albums
+            Task {
+                await library.add(Array(albums[1].tracks.prefix(3)) + Array(albums[2].tracks.prefix(2)), to: Playlist.favoritesID)
+                await library.createPlaylist(named: "Late Drives", with: Array(albums[1].tracks) + Array(albums[0].tracks.prefix(2)))
+            }
+        }
+        if arguments.contains("-ClosureAddToPlaylist"), debugAddToPlaylist == nil, let album = library.albums.dropFirst().first {
+            debugAddToPlaylist = Array(album.tracks.prefix(1))
+        }
+        guard let flag = arguments.firstIndex(of: "-ClosureScreen"), flag + 1 < arguments.count,
+              player.currentTrack == nil, let album = library.albums.first else { return }
+        let screen = arguments[flag + 1]
+        var target = album
+        if let titleFlag = arguments.firstIndex(of: "-ClosureAlbum"), titleFlag + 1 < arguments.count,
+           let match = library.albums.first(where: { $0.title.hasPrefix(arguments[titleFlag + 1]) }) {
+            target = match
+        }
+        player.play(target.tracks, from: min(1, target.tracks.count - 1), context: target.title)
+        // -ClosurePlayNext: insert tracks from another album, then log the queue.
+        if arguments.contains("-ClosurePlayNext"), let other = library.albums.first(where: { $0.id != target.id }) {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                let before = player.progress.position
+                player.playNext([other.tracks[0]], context: other.title)
+                player.playLast(Array(other.tracks.suffix(2)), context: other.title)
+                try? await Task.sleep(for: .seconds(1))
+                print(String(format: "[Closure] queue edit: %@ %.2f s -> %.2f s; queue %@", player.currentTrack?.title ?? "?",
+                             before, player.progress.position, player.queue.map(\.title).joined(separator: ", ")))
+            }
+        }
+        switch screen {
+        case "album": path.append(LibraryRoute.album(target.id))
+        case "nowplaying", "signal", "queue", "lyrics": showingNowPlaying = true
+        case "artists": tab = .artists
+        case "folders": path.append(LibraryRoute.folders)
+        case "playlists": tab = .playlists
+        case "playlist": if let second = library.playlists.dropFirst().first { path.append(LibraryRoute.playlist(second.id)) }
+        case "search": showingSearch = true
+        case "drive": showingDrive = true
+        case "downloads": showingDownloads = true
+        case "duplicates": path.append(LibraryRoute.duplicates)
+        case "info", "storage": path.append(LibraryRoute.info)
+        case "problems": path.append(LibraryRoute.fileProblems)
+        case "albumpreview": debugPreviewAlbum = target
+        case "trash":
+            // Deletes the second track of the target album, then opens Recently Deleted.
+            Task {
+                await library.delete(target.tracks[min(1, target.tracks.count - 1)])
+                path.append(LibraryRoute.recentlyDeleted)
+            }
+        case "restore":
+            Task { await library.restoreAll() }
+        case "import":
+            var report = FileImporter.Report()
+            report.audioFiles = 12
+            report.companionFiles = 5
+            report.leftInPlace = ["Night Album/extras.zip"]
+            library.importSummary = ImportSummary(source: "Finder", report: report)
+        default: break
+        }
     }
 #endif
+}
 
-    private var albumList: some View {
-        List {
-            if let message = library.lastImportMessage {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+/// Two-column album grid.
+struct AlbumGrid: View {
+    let albums: [Album]
 
-            ForEach(library.albums) { album in
-                Section {
-                    ForEach(Array(album.tracks.enumerated()), id: \.element.id) { index, track in
-                        TrackRow(track: track, isCurrent: player.currentTrack?.id == track.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture { player.play(album.tracks, from: index) }
-                            .swipeActions {
-                                Button("Delete", systemImage: "trash", role: .destructive) {
-                                    Task { await library.delete(track) }
-                                }
-                            }
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 21, alignment: .top),
+                            GridItem(.flexible(), alignment: .top)],
+                  spacing: 30) {
+            ForEach(albums) { album in
+                NavigationLink(value: LibraryRoute.album(album.id)) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ArtworkView(request: album.artworkRequest, title: album.title, pixelSize: 520)
+                            // Printed, not floating: a hairline edge, no shadow (as on the album page).
+                            .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
+                        Text(album.title)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                            .padding(.top, 10)
+                        Text(album.artist)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
+                            .lineLimit(1)
+                            .padding(.top, 2)
+                        MetaText(album.format, size: 9.5, tracking: 1)
+                            .padding(.top, 7)
                     }
-                } header: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(album.title).font(.headline).foregroundStyle(.primary)
-                        Text(album.artist).font(.subheadline)
-                    }
-                    .textCase(nil)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .contextMenu {
+                    TrackMenuItems(tracks: album.tracks, context: album.title)
+                } preview: {
+                    AlbumMenuPreview(album: album)
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .padding(.horizontal, Theme.horizontalMargin)
     }
 }
 
-private struct TrackRow: View {
-    let track: Track
-    let isCurrent: Bool
+/// What a long press on an album lifts: the cover with its title and artist on paper,
+/// with even margins, so the system's rounded preview never cuts the cover or the text.
+struct AlbumMenuPreview: View {
+    let album: Album
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(track.trackNumber > 0 ? "\(track.trackNumber)" : "–")
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 24, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.title)
-                    .fontWeight(isCurrent ? .semibold : .regular)
-                    .lineLimit(1)
-                Text(track.formatSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 8)
-
-            Text(formatTime(track.duration))
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            ArtworkView(request: album.artworkRequest, title: album.title, pixelSize: 600)
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Theme.ink.opacity(0.1), lineWidth: 1))
+            Text(album.title)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(2)
+                .padding(.top, 14)
+            Text(album.artist)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.muted)
+                .lineLimit(1)
+                .padding(.top, 2)
+            MetaText(album.format, size: 9.5, tracking: 1)
+                .padding(.top, 8)
         }
+        .padding(16)
+        .frame(width: 280)
+        .background(Theme.paper)
     }
-}
-
-func formatTime(_ seconds: Double) -> String {
-    guard seconds.isFinite, seconds > 0 else { return "0:00" }
-    let total = Int(seconds.rounded(.down))
-    return String(format: "%d:%02d", total / 60, total % 60)
 }

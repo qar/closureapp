@@ -6,7 +6,7 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    MARKETING_VERSION: 0.1.0
+    MARKETING_VERSION: 0.0.1
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: "5.0"
     CLANG_CXX_LANGUAGE_STANDARD: c++17
@@ -22,6 +22,9 @@ targets:
   Closure:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Closure/GoogleOAuth.xcconfig
+      Release: Closure/GoogleOAuth.xcconfig
     sources:
       - path: Closure
       - path: ../core/src
@@ -29,9 +32,12 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Closure
+        # iPhone only: the layout is designed for iPhone. XcodeGen's iOS default is "1,2".
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: com.qar.closure
         INFOPLIST_FILE: Closure/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Closure/Closure.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Closure/Bridge/Closure-Bridging-Header.h
         HEADER_SEARCH_PATHS:
           - $(SRCROOT)/../core/include
@@ -41,6 +47,8 @@ targets:
         # Same App Store Connect team as Modocus (Qiao Anran, paid account).
         DEVELOPMENT_TEAM: L9WF5HSH87
         ENABLE_PREVIEWS: YES
+    dependencies:
+      - sdk: libsqlite3.tbd
     scheme:
       testTargets:
         - ClosureTests
@@ -51,6 +59,31 @@ targets:
       - path: ClosureTests
       # Plain Foundation code, compiled straight into the tests without a host app.
       - path: Closure/Library/FileImporter.swift
+      - path: Closure/Library/AlbumTitleParts.swift
+      - path: Closure/Library/ArtworkStore.swift
+      - path: Closure/Library/LibraryModels.swift
+      - path: Closure/Library/LegacyAudioTags.swift
+      - path: Closure/Library/LibrarySearchIndex.swift
+      - path: Closure/Library/TrashStore.swift
+      - path: Closure/Library/LibraryDatabase.swift
+      - path: Closure/Library/GoogleDrive.swift
+      - path: Closure/Library/DownloadJob.swift
+      - path: Closure/Library/DriveDownloadManager.swift
+      - path: Closure/Library/ContentIndex.swift
+      - path: Closure/Library/PlaybackState.swift
+      - path: Closure/Library/StorageSummary.swift
+      - path: Closure/Library/FileProblems.swift
+      - path: Closure/Library/AlbumOverride.swift
+      - path: Closure/Library/TrackOverride.swift
+      - path: Closure/Audio/NowPlayingSnapshot.swift
+      - path: Closure/Audio/RemoteCommandDelivery.swift
+      - path: Closure/Audio/AudioSessionController.swift
+      - path: Closure/Library/MusicBrainz.swift
+      - path: Closure/Library/Lyrics.swift
+      - path: Closure/Library/Playlist.swift
+      - path: Closure/CarPlay/CarPlayPage.swift
+    dependencies:
+      - sdk: libsqlite3.tbd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qar.closure.tests

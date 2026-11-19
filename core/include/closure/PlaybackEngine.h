@@ -112,6 +112,11 @@ public:
     void resetOutput();
 
     void setQueue(std::vector<std::string> paths, int startIndex = 0);
+
+    /** Replaces the queue around the track being heard, e.g. to shuffle or unshuffle
+        what comes after it. `currentIndex` is that track's place in `paths`. The track
+        keeps playing without a break; only the tracks after it change. */
+    void replaceQueue(std::vector<std::string> paths, int currentIndex);
     bool play(std::string* error = nullptr);
     void pause();
     void togglePlayPause();

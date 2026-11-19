@@ -13,7 +13,15 @@ cmake-build-*/
 *.xcuserdata
 DerivedData/
 
-# iOS prototype: the Xcode project is generated from ios/project.yml by XcodeGen.
-ios/Closure.xcodeproj/
+# iOS: the Xcode project is generated from ios/project.yml by XcodeGen and committed,
+# because Xcode Cloud needs a project that is present in the repository. After changing
+# project.yml, run `xcodegen` in ios/ and commit the result.
+xcuserdata/
 ios/build/
+ios/local.mk
 core/build*/
+
+# App Store Connect API key ids (local only)
+ios/fastlane/.env
+ios/fastlane/report.xml
+ios/fastlane/README.md

@@ -1,0 +1,181 @@
+require "yaml"
+
+default_platform(:ios)
+
+# App Store Connect API key from the environment, when it is set there
+# (APP_STORE_CONNECT_API_KEY_ID, APP_STORE_CONNECT_API_KEY_ISSUER_ID and the .p8 in
+# ~/.appstoreconnect/private_keys). Without it, fastlane signs in with the Apple ID.
+def asc_api_key
+  key_id = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+  issuer_id = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
+  return nil if key_id.nil? || issuer_id.nil?
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: asc_key_path,
+    in_house: false
+  )
+end
+
+def require_api_key!
+  UI.user_error!("Set APP_STORE_CONNECT_API_KEY_ID and APP_STORE_CONNECT_API_KEY_ISSUER_ID (ios/fastlane/.env)") if asc_api_key.nil?
+end
+
+def asc_key_path
+  File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{ENV['APP_STORE_CONNECT_API_KEY_ID']}.p8")
+end
+
+# xcodebuild flags that let -exportArchive sign and upload with the API key, so no
+# Apple ID has to be added to Xcode.
+def xcodebuild_auth_args
+  "-allowProvisioningUpdates -authenticationKeyPath #{asc_key_path} " \
+    "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']} " \
+    "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_KEY_ISSUER_ID']}"
+end
+
+# The version in project.yml (MARKETING_VERSION), so the lanes follow `make release`.
+def app_version
+  spec = YAML.safe_load(File.read(File.expand_path("../project.yml", __dir__)))
+  spec.fetch("settings").fetch("base").fetch("MARKETING_VERSION").to_s
+end
+
+# App Store paid downloads are owned by Apple. The app has no StoreKit purchase
+# screen or receipt gate; a buyer restores access by downloading it again.
+def ensure_paid_app_price
+  app = Spaceship::ConnectAPI::App.find("com.qar.closure")
+  UI.user_error!("App Store record missing") if app.nil?
+  client = Spaceship::ConnectAPI.tunes_request_client
+  schedule = begin
+    client.get("v1/apps/#{app.id}/appPriceSchedule").body["data"]
+  rescue Spaceship::UnexpectedResponse => error
+    raise unless error.message.include?("does not exist")
+    nil
+  end
+  if schedule
+    response = begin
+      client.get("v1/appPriceSchedules/#{schedule.fetch('id')}/manualPrices",
+                 { include: "appPricePoint", limit: 200 }).body
+    rescue Spaceship::UnexpectedResponse => error
+      raise unless error.message.include?("does not exist")
+      nil
+    end
+    if response
+      points = response.fetch("included", []).to_h { |item| [item["id"], item.dig("attributes", "customerPrice")] }
+      current = response.fetch("data", []).find { |price| price.dig("attributes", "endDate").nil? }
+      point = points[current&.dig("relationships", "appPricePoint", "data", "id")]
+      if point.to_f == 4.99
+        UI.success("App Store download price is US$4.99")
+        return
+      end
+    end
+  end
+
+  response = client.get("v1/apps/#{app.id}/appPricePoints",
+                        { filter: { territory: "USA" }, limit: 200 }).body
+  point = response.fetch("data").find { |item| item.dig("attributes", "customerPrice").to_f == 4.99 }
+  UI.user_error!("US$4.99 price point unavailable") if point.nil?
+  price_id = "${papermoon-us-price}"
+  client.post("v1/appPriceSchedules", {
+    data: {
+      type: "appPriceSchedules",
+      relationships: {
+        app: { data: { type: "apps", id: app.id } },
+        baseTerritory: { data: { type: "territories", id: "USA" } },
+        manualPrices: { data: [{ type: "appPrices", id: price_id }] }
+      }
+    },
+    included: [{
+      type: "appPrices", id: price_id,
+      attributes: { startDate: nil, endDate: nil },
+      relationships: { appPricePoint: { data: { type: "appPricePoints", id: point.fetch("id") } } }
+    }]
+  })
+  UI.success("Set App Store download price to US$4.99")
+end
+
+platform :ios do
+  desc "Set the one-time App Store download price to US$4.99"
+  lane :set_paid_price do
+    require_api_key!
+    ensure_paid_app_price
+  end
+
+  # Creates the App Store Connect record (and the App ID if it is missing), which
+  # reserves the name. Apple offers no API for creating apps, so this signs in with
+  # the Apple ID and asks for the password and a two-factor code.
+  desc "Create the Papermoon app record on App Store Connect"
+  # "Papermoon" alone is taken on App Store Connect (2026-11-17); the brand stays
+  # Papermoon with a descriptive suffix. Try another with: fastlane create_app name:"Papermoon Player"
+  lane :create_app do |options|
+    produce(
+      app_name: options[:name] || "Papermoon Music",
+      language: "en-US",
+      sku: "papermoon-ios",
+      app_version: app_version,
+      platform: "ios",
+      # Xcode's automatic signing may already have registered the App ID.
+      skip_itc: false,
+      enable_services: {}
+    )
+  end
+
+  # Uploads the store text in fastlane/metadata (English and Simplified Chinese) to
+  # the version in project.yml. No binary, no screenshots, nothing is submitted for review.
+  desc "Upload App Store metadata for the current version"
+  lane :upload_metadata do
+    deliver(
+      api_key: asc_api_key,
+      app_version: app_version,
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      # Apple's new age-rating questionnaire makes fastlane fail with "No data" on a
+      # first version; the rating and categories are set on the website instead.
+      skip_app_version_update: false,
+      ignore_language_directory_validation: true,
+      force: true,
+      submit_for_review: false,
+      run_precheck_before_submit: false
+    )
+  end
+
+  # Pulls the store text that is on App Store Connect into fastlane/metadata, to
+  # compare with what we have (git diff shows the differences).
+  desc "Download the current App Store metadata"
+  lane :fetch_metadata do
+    require_api_key!
+    key_file = File.join(Dir.tmpdir, "papermoon-asc-key.json")
+    File.write(key_file, { key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"], issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+                           key: File.read(asc_key_path), in_house: false }.to_json)
+    begin
+      sh("fastlane deliver download_metadata --api_key_path #{key_file} --app_version #{app_version} --force")
+    ensure
+      File.delete(key_file) if File.exist?(key_file)
+    end
+  end
+
+  # Builds the Release archive into build/Papermoon.xcarchive (generic iOS device).
+  # Signing uses the API key, so no Apple ID has to be added to Xcode.
+  desc "Archive the app into build/Papermoon.xcarchive"
+  lane :archive do
+    require_api_key!
+    FileUtils.rm_rf(File.expand_path("../build/Papermoon.xcarchive"))
+    sh("xcodebuild -project '#{File.expand_path('../Closure.xcodeproj')}' -scheme Closure -configuration Release " \
+       "-destination 'generic/platform=iOS' archive -archivePath '#{File.expand_path('../build/Papermoon.xcarchive')}' " \
+       "#{xcodebuild_auth_args} | grep -E '^(\\*\\*|error:|warning:.*deprecat|.*error)' || true")
+    UI.user_error!("Archive failed") unless File.directory?(File.expand_path("../build/Papermoon.xcarchive/Products"))
+  end
+
+  # Signs build/Papermoon.xcarchive for the App Store and uploads it (ExportOptions
+  # has destination "upload"). Signing and upload use the API key; no Apple ID has
+  # to be added to Xcode. Takes a few minutes; the build then shows up in TestFlight
+  # and can be attached to the version.
+  desc "Sign build/Papermoon.xcarchive and upload the build to App Store Connect"
+  lane :upload_build do |options|
+    require_api_key!
+    archive = File.expand_path(options[:archive] || "../build/Papermoon.xcarchive")
+    UI.user_error!("No archive at #{archive}") unless File.directory?(archive)
+    sh("xcodebuild -exportArchive -archivePath '#{archive}' " \
+       "-exportOptionsPlist '#{File.expand_path('../ExportOptions-AppStore.plist')}' " \
+       "-exportPath '#{File.expand_path('../build/export')}' #{xcodebuild_auth_args}")
+  end
+end

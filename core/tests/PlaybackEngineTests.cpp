@@ -5,6 +5,7 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -234,6 +235,18 @@ struct EventLog
                 indices.push_back(event.trackIndex);
         return indices;
     }
+
+    bool waitForTrackChanges(std::size_t count)
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        return changed.wait_for(lock, std::chrono::seconds(5), [this, count]
+        {
+            return std::count_if(events.begin(), events.end(), [](const EngineEvent& event)
+            {
+                return event.type == EngineEvent::Type::trackChanged;
+            }) >= static_cast<std::ptrdiff_t>(count);
+        });
+    }
 };
 
 // -------------------------------------------------------------------------------------
@@ -434,6 +447,48 @@ void testRepeatModes()
     }
 }
 
+void testReplaceQueueKeepsTheCurrentTrackPlaying()
+{
+    // A long first track, so the change lands mid-track; a short one, so it lands
+    // after the next track is already decoded.
+    for (const std::size_t firstLength : { std::size_t(400000), std::size_t(3000) })
+    {
+        const auto a = writeFloatWav("replaceA" + std::to_string(firstLength) + ".wav", 44100.0, 2,
+                                     constantStereo(firstLength, 0.1f));
+        const auto b = writeFloatWav("replaceB.wav", 44100.0, 2, constantStereo(5000, 0.2f));
+        const auto c = writeFloatWav("replaceC.wav", 44100.0, 2, constantStereo(7000, 0.3f));
+
+        EventLog log;
+        PlaybackEngine engine(offlineOptions());
+        log.attach(engine);
+        engine.setRepeatMode(RepeatMode::off);
+        engine.setOutputSampleRate(44100.0);
+        engine.setQueue({ a, b, c }, 0);
+        engine.play();
+
+        std::size_t rendered = 0;
+        auto head = renderAll(engine, 1000, rendered);
+        // Wait until the decoder has run ahead as far as it will.
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        engine.replaceQueue({ c, a, b }, 1);
+        check(engine.status().trackIndex == 1, "the current track has its new index");
+
+        std::size_t restRendered = 0;
+        const auto rest = renderAll(engine, firstLength - 1000 + 5000 + 1000, restRendered);
+        const auto label = " (first track " + std::to_string(firstLength) + " frames)";
+        check(rendered + restRendered == firstLength + 5000, "the current track plays to its end, then b" + label);
+        check(segmentEquals(rest, 0, firstLength - 1000, 0.1f, -0.1f), "no break in the current track" + label);
+        check(segmentEquals(rest, firstLength - 1000, 5000, 0.2f, -0.2f), "b follows in the new order" + label);
+        // Renumbering the track being heard is not a track change.
+        check(log.waitForTrackChanges(2), "track changes arrive" + label);
+        const auto changes = log.trackChanges();
+        std::string seen;
+        for (const auto index : changes)
+            seen += std::to_string(index) + " ";
+        check(changes == std::vector<int>({ 0, 2 }), "events: 0, then b at its new index; got " + seen + label);
+    }
+}
+
 void testResampling()
 {
     const double sourceRate = 48000.0;
@@ -469,6 +524,28 @@ void testResampling()
     const auto frequency = crossings * outputRate / static_cast<double>(to - from);
     check(std::abs(frequency - 1000.0) < 5.0, "resampled tone is 1 kHz (measured " + std::to_string(frequency) + ")");
     check(std::abs(peak - 0.5f) < 0.005f, "resampled level is kept (peak " + std::to_string(peak) + ")");
+}
+
+void testRateChangeKeepsPosition()
+{
+    const auto path = writeFloatWav("route-rate-change.wav", 44100.0, 1, rampMono(44100 * 3));
+    check(!path.empty(), "create route-change test file");
+    PlaybackEngine engine(offlineOptions());
+    check(engine.setOutputSampleRate(44100.0), "set initial hardware rate");
+    engine.setQueue({ path });
+    check(engine.play(), "start before route change");
+    std::vector<float> first(44100 * 2);
+    check(engine.renderOffline(first.data(), 44100) == 44100, "render first second");
+    const auto before = engine.status();
+
+    check(engine.setOutputSampleRate(48000.0), "change hardware rate");
+    const auto after = engine.status();
+    check(after.playing && after.trackIndex == before.trackIndex, "playback continues on the same track");
+    check(std::abs(after.positionSeconds - before.positionSeconds) < 0.02, "route change keeps position");
+    check(after.outputSampleRate == 48000.0, "new hardware rate is active");
+    std::vector<float> next(4800 * 2);
+    check(engine.renderOffline(next.data(), 4800) == 4800, "render after route change");
+    check(next[0] > 0.03f, "playback resumes near the former position");
 }
 
 void testAacPrimingIsTrimmed()
@@ -557,7 +634,9 @@ int main(int argc, char** argv)
     run("seek is frame accurate", testSeekIsFrameAccurate);
     run("navigation", testNavigation);
     run("repeat modes", testRepeatModes);
+    run("replace queue keeps the current track playing", testReplaceQueueKeepsTheCurrentTrackPlaying);
     run("high quality resampling", testResampling);
+    run("route sample rate change keeps position", testRateChangeKeepsPosition);
     run("AAC priming is trimmed", testAacPrimingIsTrimmed);
     run("missing file is skipped", testMissingFileIsSkipped);
     if (bench)
