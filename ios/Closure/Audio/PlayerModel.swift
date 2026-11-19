@@ -447,34 +447,29 @@ final class PlayerModel {
     private func wireRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.resume() }
-            return .success
+            RemoteCommandDelivery.schedule { [weak self] in self?.resume() }
         }
         center.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.pause() }
-            return .success
+            RemoteCommandDelivery.schedule { [weak self] in self?.pause() }
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.togglePlayPause() }
-            return .success
+            RemoteCommandDelivery.schedule { [weak self] in self?.togglePlayPause() }
         }
         center.nextTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.next() }
-            return .success
+            RemoteCommandDelivery.schedule { [weak self] in self?.next() }
         }
         center.previousTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated { self?.previous() }
-            return .success
+            RemoteCommandDelivery.schedule { [weak self] in self?.previous() }
         }
         center.changeShuffleModeCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangeShuffleModeCommandEvent else { return .commandFailed }
-            MainActor.assumeIsolated { self?.setShuffle(event.shuffleType != .off) }
-            return .success
+            let shuffle = event.shuffleType != .off
+            return RemoteCommandDelivery.schedule { [weak self] in self?.setShuffle(shuffle) }
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            MainActor.assumeIsolated { self?.seek(to: event.positionTime) }
-            return .success
+            let position = event.positionTime
+            return RemoteCommandDelivery.schedule { [weak self] in self?.seek(to: position) }
         }
     }
 
