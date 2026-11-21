@@ -1,4 +1,4 @@
-Papermoon plays the music you own, from your iPhone, the way it was recorded.
+Closure plays the music you own, from your iPhone, the way it was recorded.
 
 YOUR LIBRARY, ON YOUR IPHONE
 • Import albums and folders from the Files app, Google Drive or Finder. Folders keep their layout.
@@ -18,4 +18,4 @@ MADE FOR LISTENING
 • Playlists, Favorites, Play Next and Play Last.
 • Play in order, repeat all, repeat one or shuffle. Playback continues where you left off.
 
-Papermoon only goes online when you ask it to: to import from Google Drive, or to look up album info or lyrics.
+Closure only goes online when you ask it to: to import from Google Drive, or to look up album info or lyrics.
