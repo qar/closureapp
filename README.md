@@ -57,7 +57,21 @@ Gatekeeper 可能要求用户在“隐私与安全性”中手动允许首次打
 账户中，勿将私钥提交到仓库。
 
 本地也可以运行 `bash scripts/package-macos.sh <Closure.app 路径> dist` 生成
-DMG 和 ZIP。`swift scripts/generate-icon.swift assets/ClosureIcon.png` 可重新生成图标。
+DMG 和 ZIP。
+
+## 应用图标
+
+已确认的图标原图保存在 `assets/ClosureIconSource.jpeg`。iOS 和 macOS 均从这张
+原图生成图标，保留其配色与构图。在仓库根目录运行：
+
+```bash
+swift scripts/generate-icon.swift
+swift ios/scripts/generate-app-icon.swift
+```
+
+macOS 输出 `assets/ClosureIcon.png`，保留圆角底板和外部阴影；iOS 输出
+`ios/Closure/Assets.xcassets/AppIcon.appiconset/AppIcon.png`，为无透明通道的
+1024×1024 PNG，由系统应用圆角遮罩。
 
 ## v1 功能
 

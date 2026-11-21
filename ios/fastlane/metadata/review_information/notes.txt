@@ -1,4 +1,4 @@
-Papermoon is a local music player. It plays audio files the user adds to the app (FLAC, ALAC, AAC, MP3 and other formats the system decodes) and keeps the library in a local SQLite database. There is no account, no login and no demo credentials. It is a paid app with no in-app purchases.
+Closure is a local music player. It plays audio files the user adds to the app (FLAC, ALAC, AAC, MP3 and other formats the system decodes) and keeps the library in a local SQLite database. There is no account, no login and no demo credentials. It is a paid app with no in-app purchases.
 
 How to test
 

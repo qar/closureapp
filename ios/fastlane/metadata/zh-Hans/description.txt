@@ -1,4 +1,4 @@
-Papermoon 在你的 iPhone 上播放你自己的音乐，按录音原样呈现。
+Closure 在你的 iPhone 上播放你自己的音乐，按录音原样呈现。
 
 曲库就在你的 iPhone 上
 • 从“文件”App、Google Drive 或 Finder 导入专辑和文件夹，保留原来的目录结构。
@@ -18,4 +18,4 @@ Papermoon 在你的 iPhone 上播放你自己的音乐，按录音原样呈现�
 • 歌单、收藏、下一首播放、稍后播放。
 • 顺序播放、列表循环、单曲循环、随机播放。重新打开时从上次的位置继续。
 
-只有在你要求时，Papermoon 才会联网：从 Google Drive 导入，或查找专辑信息和歌词。
+只有在你要求时，Closure 才会联网：从 Google Drive 导入，或查找专辑信息和歌词。
